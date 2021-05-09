@@ -8,7 +8,7 @@
 
 ## GPG Key
 
-[Public key](public.txt)
+[Public key](pubkey.txt)
 
 <pre>
 pub  rsa4096 2020-05-08
