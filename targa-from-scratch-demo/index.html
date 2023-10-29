@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TGA From Scratch</title>
+
+    <link rel="stylesheet" type="text/css" href="styles.css" />
+  </head>
+
+  <body>
+    <h1>Truevision TGA (Targa) From Scratch</h1>
+
+    <div class="container">
+      <div class="left">
+        <div>
+          <input type="file" accept=".tga" />
+        </div>
+
+        <canvas></canvas>
+      </div>
+
+      <div class="right">
+        <template id="row">
+          <tr>
+            <td></td>
+            <td></td>
+          </tr>
+        </template>
+
+        <div>
+          <h3>Stats</h3>
+
+          <table></table>
+        </div>
+      </div>
+    </div>
+
+    <a href="./images/earth.tga" download="sample-1">Sample 1</a>
+    <a href="./images/fern.tga" download="sample-2">Sample 2</a>
+    <a href="./images/football_seal.tga" download="sample-3">Sample 3</a>
+    <a href="./images/shuttle.tga" download="sample-4">Sample 4</a>
+
+    <script src="js/index.js"></script>
+  </body>
+</html>
