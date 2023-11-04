@@ -1,1 +1,564 @@
-(()=>{var f=(o=>(o[o.NO_IMAGE_DATA=0]="NO_IMAGE_DATA",o[o.COLOR_MAPPED=1]="COLOR_MAPPED",o[o.TRUE_COLOR=2]="TRUE_COLOR",o[o.GRAY_SCALE=3]="GRAY_SCALE",o[o.RUN_LENGTH_ENCODED_COLOR_MAPPED=9]="RUN_LENGTH_ENCODED_COLOR_MAPPED",o[o.RUN_LENGTH_ENCODED_TRUE_COLOR=10]="RUN_LENGTH_ENCODED_TRUE_COLOR",o[o.RUN_LENGTH_ENCODED_GRAY_SCALE=11]="RUN_LENGTH_ENCODED_GRAY_SCALE",o))(f||{});function d(...n){let e=n.reduce((s,a)=>s+a.byteLength,0),r=new ArrayBuffer(e),t=new Uint8Array(r),i=0;for(let s of n){let a=new Uint8Array(s);for(let o of a)t[i++]=o}return r}function m(n){return new Promise((e,r)=>{let t=new FileReader;t.addEventListener("load",()=>{let i=t.result;e(i)}),t.addEventListener("error",r),t.readAsArrayBuffer(n)})}function O(n){return n.replace(/\b(\w)/g,(e,r)=>r.toUpperCase())}function g(n){let e={version:n.version,imageType:O(f[n.imageType].toLowerCase().replace(/_/g," ")),xOrigin:n.xOrigin,yOrigin:n.yOrigin,imageWidth:n.imageWidth,imageHeight:n.imageHeight,pixelSize:n.pixelSize,imageDescriptor:n.imageDescriptor.toString(2).padStart(8,"0"),imageIdentificationFieldLength:n.imageIdentificationFieldLength,topToBottom:n.isTopToBottom(),colorMapOrigin:n.colorMapOrigin,colorMapLength:n.colorMapLength,colorMapPixelSize:n.colorMapPixelSize,RLEDecodeDuration:`${n.durations.RLEDecodeDuration} ms`,DrawDuration:`${n.durations.CanvasDrawDuration} ms`},r={};for(let[t,i]of Object.entries(e)){let a=`${t[0].toUpperCase()}${t.replace(/(?!\b[A-Z])([A-Z])/g," $1").substring(1)}`;if(typeof i=="boolean"){r[a]=i?"Yes":"No";continue}r[a]=i}return r}var p=class{decodedArrayBuffer;readerBytes;writerBytes;pixelSize;readCursor=0;writeCursor=0;constructor(e,r,t,i){this.decodedArrayBuffer=new ArrayBuffer(r*t*i),this.readerBytes=new Uint8Array(e),this.writerBytes=new Uint8Array(this.decodedArrayBuffer),this.pixelSize=i}read(){let e=this.readerBytes[this.readCursor];return this.readCursor+=1,e}write(e){this.writerBytes[this.writeCursor]=e,this.writeCursor+=1}readNextPixel(){let e=[];for(let r=0;r<this.pixelSize;++r)e.push(this.read());return e}writePixel(e){for(let r of e)this.write(r)}decode(){for(;this.writeCursor<this.writerBytes.byteLength;){let e=this.read();if(e>=128){let r=e-128,t=this.readNextPixel();for(let i=0;i<=r;++i)this.writePixel(t)}else{let r=e;for(let t=0;t<=r;++t){let i=this.readNextPixel();this.writePixel(i)}}}return this.decodedArrayBuffer}};function b(n,e,r,t){return new p(n,e,r,t).decode()}var c=class n{static GRID_SIZE=30;#e;dataView;bytes;colorMapType;imageType;xOrigin;yOrigin;imageWidth;imageHeight;pixelSize;imageDescriptor;imageIdentificationFieldLength;imageDataFieldOffset;colorMapOrigin;colorMapLength;colorMapPixelSize;extensionOffset;version;durations={RLEDecodeDuration:0,CanvasDrawDuration:0};get arrayBuffer(){return this.#e}set arrayBuffer(e){this.#e=e,this.dataView=new DataView(e),this.bytes=new Uint8Array(e)}constructor(e){if(this.arrayBuffer=e,this.imageIdentificationFieldLength=this.bytes[0],this.colorMapType=this.bytes[1],this.imageType=this.bytes[2],this.colorMapOrigin=this.dataView.getUint16(3,!0),this.colorMapLength=this.dataView.getUint16(5,!0),this.colorMapPixelSize=this.bytes[7]/8,this.xOrigin=this.bytes[8],this.yOrigin=this.bytes[10],this.imageWidth=this.dataView.getUint16(12,!0),this.imageHeight=this.dataView.getUint16(14,!0),this.pixelSize=this.bytes[16]/8,this.imageDescriptor=this.bytes[17],this.imageDataFieldOffset=this.getImageDataFieldOffset(),this.detectVersion(),this.imageType>8){let r=performance.now();this.decodeRunLengthEncoding();let t=performance.now();this.durations.RLEDecodeDuration=t-r}this.version===2&&(this.extensionOffset=this.dataView.getUint32(this.dataView.byteLength-26,!0))}detectVersion(){let e="TRUEVISION-XFILE.\0",r=this.arrayBuffer.slice(-18),i=new TextDecoder().decode(r);this.version=i===e?2:1}decodeRunLengthEncoding(){let e=b(this.arrayBuffer.slice(this.imageDataFieldOffset),this.imageWidth,this.imageHeight,this.pixelSize);switch(this.version){case 1:{let r=this.arrayBuffer.slice(0,this.imageDataFieldOffset);this.arrayBuffer=d(r,e);break}case 2:{let r=this.arrayBuffer.slice(0,this.imageDataFieldOffset),t;this.extensionOffset!==0?t=this.arrayBuffer.slice(this.extensionOffset):t=this.arrayBuffer.slice(-26),this.arrayBuffer=d(r,e,t);break}}}getImageDataFieldOffset(){switch(this.colorMapType){case 0:return 18+this.imageIdentificationFieldLength;case 1:return 18+this.imageIdentificationFieldLength+this.colorMapLength*this.colorMapPixelSize;default:throw new Error(`Color Map Type "${this.colorMapType}" is not supported!`)}}isTopToBottom(){return(this.imageDescriptor&16)===16}getPixelOffset(e,r){let t;if(this.isTopToBottom()?t=r*this.imageWidth*this.pixelSize+e*this.pixelSize:t=(this.imageHeight-r-1)*this.imageWidth*this.pixelSize+e*this.pixelSize,t+=this.imageDataFieldOffset,this.colorMapType===0)return t;if(this.colorMapType===1)return this.pixelSize===2?t=this.dataView.getUint16(t,!0):t=this.bytes[t],18+this.imageIdentificationFieldLength+this.colorMapOrigin+t*this.colorMapPixelSize;throw new Error(`Color map type ${this.colorMapType} is not supported`)}getPixelColor(e,r){let t=this.colorMapType===0?this.pixelSize:this.colorMapPixelSize,i=this.getPixelOffset(e,r);switch(t){case 1:{let s=this.bytes[i];return{red:s,green:s,blue:s,alpha:255}}case 3:{let s=this.bytes[i],a=this.bytes[i+1];return{red:this.bytes[i+2],green:a,blue:s,alpha:255}}case 4:{let s=this.bytes[i],a=this.bytes[i+1],o=this.bytes[i+2],u=this.bytes[i+3];return{blue:s,green:a,red:o,alpha:u}}default:throw new Error(`Pixel Size (${this.pixelSize}) is not supported!`)}}static getCanvasBackgroundColor(e,r){let t=Math.floor(e/this.GRID_SIZE)%2===0,i=Math.floor(r/this.GRID_SIZE)%2===0;return Number(t)^Number(i)?{red:100,green:100,blue:100,alpha:255}:{red:180,green:180,blue:180,alpha:255}}static blendColors(e,r){let t=r.alpha/255,i=1-t;return{red:Math.min(255,r.red*t+e.red*i),green:Math.min(255,r.green*t+e.green*i),blue:Math.min(255,r.blue*t+e.blue*i),alpha:255}}draw(e){let r=performance.now(),t=e.getContext("2d");if(!t){alert("Failed to get canvas context");return}t.clearRect(0,0,e.width,e.height),e.width=this.imageWidth,e.height=this.imageHeight;let i=t.createImageData(this.imageWidth,this.imageHeight);for(let a=0;a<this.imageHeight;++a)for(let o=0;o<this.imageWidth;++o){let u=this.getPixelColor(o,a),h=a*this.imageWidth*4+o*4,x=n.getCanvasBackgroundColor(o,a),l=n.blendColors(x,u);i.data[h]=l.red,i.data[h+1]=l.green,i.data[h+2]=l.blue,i.data[h+3]=l.alpha}t.putImageData(i,0,0);let s=performance.now();this.durations.CanvasDrawDuration=s-r}};new EventSource("/esbuild").addEventListener("change",()=>location.reload());var w=document.querySelector("input[type=file]"),D=document.querySelector("canvas"),y=document.querySelector("table"),B=document.querySelector("#row");function T(n){y.innerHTML="";let e=g(n);for(let[r,t]of Object.entries(e)){let i=B.content.cloneNode(!0),s=i.querySelectorAll("td");s[0].innerText=r,s[1].innerText=t,y.appendChild(i)}console.table(e)}async function A(){try{let{files:n}=w;if(!n?.length)return;let e=n.item(0);if(!e)return;let r=await m(e),t=new c(r);T(t),t.draw(D)}catch(n){alert(n.message)}}w.addEventListener("change",()=>{A()});})();
+// src/types.ts
+var ImageType = /* @__PURE__ */ ((ImageType2) => {
+  ImageType2[ImageType2["NO_IMAGE_DATA"] = 0] = "NO_IMAGE_DATA";
+  ImageType2[ImageType2["COLOR_MAPPED"] = 1] = "COLOR_MAPPED";
+  ImageType2[ImageType2["TRUE_COLOR"] = 2] = "TRUE_COLOR";
+  ImageType2[ImageType2["GRAY_SCALE"] = 3] = "GRAY_SCALE";
+  ImageType2[ImageType2["RUN_LENGTH_ENCODED_COLOR_MAPPED"] = 9] = "RUN_LENGTH_ENCODED_COLOR_MAPPED";
+  ImageType2[ImageType2["RUN_LENGTH_ENCODED_TRUE_COLOR"] = 10] = "RUN_LENGTH_ENCODED_TRUE_COLOR";
+  ImageType2[ImageType2["RUN_LENGTH_ENCODED_GRAY_SCALE"] = 11] = "RUN_LENGTH_ENCODED_GRAY_SCALE";
+  return ImageType2;
+})(ImageType || {});
+
+// src/utils.ts
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const fileReader = new FileReader();
+    fileReader.addEventListener("load", () => {
+      const result = fileReader.result;
+      resolve(result);
+    });
+    fileReader.addEventListener("error", reject);
+    fileReader.readAsArrayBuffer(file);
+  });
+}
+function capitalize(str) {
+  return str.replace(/\b(\w)/g, (_, group1) => {
+    return group1.toUpperCase();
+  });
+}
+function generateImageInformationTable(tga) {
+  const stats = {
+    version: tga.stats.version,
+    imageType: capitalize(ImageType[tga.stats.imageType].toLowerCase().replace(/_/g, " ")),
+    xOrigin: tga.stats.xOrigin,
+    yOrigin: tga.stats.yOrigin,
+    imageWidth: tga.stats.imageWidth,
+    imageHeight: tga.stats.imageHeight,
+    pixelSize: tga.stats.pixelSize,
+    imageDescriptor: tga.stats.imageDescriptor.toString(2).padStart(8, "0"),
+    imageIdentificationFieldLength: tga.stats.imageIdentificationFieldLength,
+    topToBottom: tga.stats.isTopToBottom(),
+    colorMapOrigin: tga.stats.colorMapOrigin,
+    colorMapLength: tga.stats.colorMapLength,
+    colorMapPixelSize: tga.stats.colorMapPixelSize,
+    processingTook: `${tga.stats.duration} ms`
+  };
+  const rows = {};
+  for (const [key, value] of Object.entries(stats)) {
+    const firsCharacter = key[0];
+    const field = `${firsCharacter.toUpperCase()}${key.replace(/(?!\b[A-Z])([A-Z])/g, " $1").substring(1)}`;
+    if (typeof value === "boolean") {
+      rows[field] = value ? "Yes" : "No";
+      continue;
+    }
+    rows[field] = value;
+  }
+  return rows;
+}
+
+// src/ImageStats.ts
+var ImageStats = class {
+  #arrayBuffer;
+  dataView;
+  bytes;
+  rleEncoded = false;
+  colorMapType;
+  imageType;
+  xOrigin;
+  yOrigin;
+  imageWidth;
+  imageHeight;
+  pixelSize;
+  imageDescriptor;
+  imageIdentificationFieldLength;
+  imageDataFieldOffset;
+  colorMapOrigin;
+  colorMapLength;
+  colorMapPixelSize;
+  extensionOffset;
+  version;
+  topToBottom;
+  duration = 0;
+  get arrayBuffer() {
+    return this.#arrayBuffer;
+  }
+  set arrayBuffer(arrayBuffer) {
+    this.#arrayBuffer = arrayBuffer;
+    this.dataView = new DataView(arrayBuffer);
+    this.bytes = new Uint8Array(arrayBuffer);
+  }
+  constructor(arrayBuffer) {
+    this.arrayBuffer = arrayBuffer;
+    this.imageIdentificationFieldLength = this.bytes[0];
+    this.colorMapType = this.bytes[1];
+    this.imageType = this.bytes[2];
+    this.colorMapOrigin = this.dataView.getUint16(3, true);
+    this.colorMapLength = this.dataView.getUint16(5, true);
+    this.colorMapPixelSize = this.bytes[7] / 8;
+    this.xOrigin = this.bytes[8];
+    this.yOrigin = this.bytes[10];
+    this.imageWidth = this.dataView.getUint16(12, true);
+    this.imageHeight = this.dataView.getUint16(14, true);
+    this.pixelSize = this.bytes[16] / 8;
+    this.imageDescriptor = this.bytes[17];
+    this.imageDataFieldOffset = this.getImageDataFieldOffset();
+    this.detectVersion();
+    if (this.version === 2) {
+      this.extensionOffset = this.dataView.getUint32(this.dataView.byteLength - 26, true);
+    }
+    this.topToBottom = this.isTopToBottom();
+    if (this.imageType === 9 /* RUN_LENGTH_ENCODED_COLOR_MAPPED */ || this.imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */ || this.imageType === 10 /* RUN_LENGTH_ENCODED_TRUE_COLOR */) {
+      this.rleEncoded = true;
+    }
+  }
+  getImageDataFieldOffset() {
+    switch (this.colorMapType) {
+      case 0:
+        return 18 + this.imageIdentificationFieldLength;
+      case 1:
+        return 18 + this.imageIdentificationFieldLength + this.colorMapLength * this.colorMapPixelSize;
+      default:
+        throw new Error(`Color Map Type "${this.colorMapType}" is not supported!`);
+    }
+  }
+  detectVersion() {
+    const v2Footer = "TRUEVISION-XFILE.\0";
+    const footer = this.arrayBuffer.slice(-18);
+    const textDecoder = new TextDecoder();
+    const footerStr = textDecoder.decode(footer);
+    this.version = footerStr === v2Footer ? 2 : 1;
+  }
+  isTopToBottom() {
+    return (this.imageDescriptor & 16 /* TOP_TO_BOTTOM */) === 16 /* TOP_TO_BOTTOM */;
+  }
+  getFooterOffset() {
+    if (this.version === 2) {
+      if (this.extensionOffset !== 0) {
+        return this.extensionOffset;
+      }
+      return this.arrayBuffer.byteLength - 26;
+    }
+    return this.arrayBuffer.byteLength;
+  }
+};
+
+// src/TGAImage.ts
+var TGAImage = class _TGAImage {
+  static GRID_SIZE = 30;
+  #arrayBuffer;
+  dataView;
+  bytes;
+  imageDataBytes;
+  stats;
+  get arrayBuffer() {
+    return this.#arrayBuffer;
+  }
+  set arrayBuffer(arrayBuffer) {
+    this.#arrayBuffer = arrayBuffer;
+    this.dataView = new DataView(arrayBuffer);
+    this.bytes = new Uint8Array(arrayBuffer);
+  }
+  constructor(arrayBuffer) {
+    this.arrayBuffer = arrayBuffer;
+    this.stats = new ImageStats(arrayBuffer);
+    if (this.stats.rleEncoded) {
+      this.imageDataBytes = this.bytes.subarray(
+        this.stats.imageDataFieldOffset,
+        this.stats.getFooterOffset()
+      );
+    } else {
+      this.imageDataBytes = this.bytes.subarray(this.stats.imageDataFieldOffset);
+    }
+  }
+  drawUncompressedGrayscale(imageData) {
+    console.time("uncompressed loop");
+    const { imageHeight, imageWidth, topToBottom } = this.stats;
+    const { data } = imageData;
+    const { imageDataBytes } = this;
+    data.fill(255);
+    for (let y = 0; y < imageHeight; ++y) {
+      for (let x = 0; x < imageWidth; ++x) {
+        const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+        const byteOffset = x + y * imageWidth;
+        data[canvasOffset] = imageDataBytes[byteOffset];
+        data[canvasOffset + 1] = imageDataBytes[byteOffset];
+        data[canvasOffset + 2] = imageDataBytes[byteOffset];
+      }
+    }
+    console.timeEnd("uncompressed loop");
+  }
+  drawUncompressed(imageData) {
+    console.time("uncompressed loop");
+    const { imageHeight, imageWidth, pixelSize, topToBottom } = this.stats;
+    const { data } = imageData;
+    const { imageDataBytes } = this;
+    for (let y = 0; y < imageHeight; ++y) {
+      for (let x = 0; x < imageWidth; ++x) {
+        const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+        data[canvasOffset + 3] = 255;
+        switch (pixelSize) {
+          case 3: {
+            const byteOffset = y * imageWidth * 3 + x * 3;
+            data[canvasOffset] = imageDataBytes[byteOffset + 2];
+            data[canvasOffset + 1] = imageDataBytes[byteOffset + 1];
+            data[canvasOffset + 2] = imageDataBytes[byteOffset];
+            break;
+          }
+          case 4: {
+            const byteOffset = y * imageWidth * 4 + x * 4;
+            data[canvasOffset] = imageDataBytes[byteOffset + 3];
+            data[canvasOffset + 1] = imageDataBytes[byteOffset + 2];
+            data[canvasOffset + 2] = imageDataBytes[byteOffset + 1];
+            data[canvasOffset + 3] = imageDataBytes[byteOffset];
+            break;
+          }
+        }
+      }
+    }
+    console.timeEnd("uncompressed loop");
+  }
+  drawRunLengthEncoded(imageData) {
+    console.time("run length encoded loop");
+    const { imageHeight, imageWidth, pixelSize, topToBottom } = this.stats;
+    const { data } = imageData;
+    const { imageDataBytes, dataView } = this;
+    const readArrayLength = imageDataBytes.length;
+    let readCursor = 0;
+    let x = 0;
+    let y = 0;
+    let byte1;
+    let byte2;
+    let byte3;
+    let byte4;
+    for (let i = 0; i < readArrayLength; ++i) {
+      const packet = imageDataBytes[readCursor++];
+      if (packet >= 128) {
+        const repetition = packet - 128;
+        byte1 = imageDataBytes[readCursor++];
+        if (pixelSize > 2) {
+          byte2 = imageDataBytes[readCursor++];
+          byte3 = imageDataBytes[readCursor++];
+        }
+        if (pixelSize > 3) {
+          byte4 = imageDataBytes[readCursor++];
+        }
+        for (let i2 = 0; i2 <= repetition; ++i2) {
+          const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+          data[canvasOffset + 3] = 255;
+          switch (pixelSize) {
+            case 1: {
+              data[canvasOffset] = byte1;
+              data[canvasOffset + 1] = byte1;
+              data[canvasOffset + 2] = byte1;
+              break;
+            }
+            case 3: {
+              data[canvasOffset] = byte3;
+              data[canvasOffset + 1] = byte2;
+              data[canvasOffset + 2] = byte1;
+              break;
+            }
+            case 4: {
+              data[canvasOffset] = byte3;
+              data[canvasOffset + 1] = byte2;
+              data[canvasOffset + 2] = byte1;
+              data[canvasOffset + 3] = byte4;
+              break;
+            }
+          }
+          if (x === imageWidth - 1) {
+            x = 0;
+            y += 1;
+          } else {
+            x += 1;
+          }
+        }
+      } else {
+        const repetition = packet;
+        for (let i2 = 0; i2 <= repetition; ++i2) {
+          const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+          data[canvasOffset + 3] = 255;
+          switch (pixelSize) {
+            case 1: {
+              data[canvasOffset] = imageDataBytes[readCursor];
+              data[canvasOffset + 1] = imageDataBytes[readCursor];
+              data[canvasOffset + 2] = imageDataBytes[readCursor];
+              readCursor += 1;
+              break;
+            }
+            case 3: {
+              data[canvasOffset] = imageDataBytes[readCursor + 2];
+              data[canvasOffset + 1] = imageDataBytes[readCursor + 1];
+              data[canvasOffset + 2] = imageDataBytes[readCursor];
+              readCursor += 3;
+              break;
+            }
+            case 4: {
+              data[canvasOffset] = imageDataBytes[readCursor + 2];
+              data[canvasOffset + 1] = imageDataBytes[readCursor + 1];
+              data[canvasOffset + 2] = imageDataBytes[readCursor];
+              data[canvasOffset + 3] = imageDataBytes[readCursor + 3];
+              readCursor += 4;
+              break;
+            }
+          }
+          if (x === imageWidth - 1) {
+            x = 0;
+            y += 1;
+          } else {
+            x += 1;
+          }
+        }
+      }
+    }
+    console.timeEnd("run length encoded loop");
+  }
+  drawColorMapped(imageData) {
+    console.time("color mapped loop");
+    const {
+      imageHeight,
+      imageWidth,
+      pixelSize,
+      topToBottom,
+      colorMapPixelSize,
+      colorMapOrigin,
+      imageIdentificationFieldLength,
+      imageDataFieldOffset
+    } = this.stats;
+    const { data } = imageData;
+    const { imageDataBytes, bytes, dataView } = this;
+    const padding = 18 + imageIdentificationFieldLength + colorMapOrigin;
+    for (let y = 0; y < imageHeight; ++y) {
+      for (let x = 0; x < imageWidth; ++x) {
+        const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+        data[canvasOffset + 3] = 255;
+        const byteOffset = y * imageWidth * pixelSize + x * pixelSize;
+        const colorMapEntryOffset = padding + colorMapPixelSize * (pixelSize === 1 ? imageDataBytes[byteOffset] : dataView.getUint16(imageDataFieldOffset + byteOffset, true));
+        switch (colorMapPixelSize) {
+          case 1: {
+            data[canvasOffset] = bytes[colorMapEntryOffset];
+            data[canvasOffset + 1] = bytes[colorMapEntryOffset];
+            data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+            break;
+          }
+          case 3: {
+            data[canvasOffset] = bytes[colorMapEntryOffset + 2];
+            data[canvasOffset + 1] = bytes[colorMapEntryOffset + 1];
+            data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+            break;
+          }
+          case 4: {
+            data[canvasOffset] = bytes[colorMapEntryOffset + 2];
+            data[canvasOffset + 1] = bytes[colorMapEntryOffset + 1];
+            data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+            data[canvasOffset + 3] = bytes[colorMapEntryOffset + 3];
+            break;
+          }
+        }
+      }
+    }
+    console.timeEnd("color mapped loop");
+  }
+  drawRunLengthEncodedColorMapped(imageData) {
+    console.time("run length encoded color mapped loop");
+    const { imageHeight, imageWidth, pixelSize, topToBottom, imageIdentificationFieldLength, colorMapOrigin, imageDataFieldOffset, colorMapPixelSize } = this.stats;
+    const { data } = imageData;
+    const { imageDataBytes, bytes, dataView } = this;
+    const readArrayLength = imageDataBytes.length;
+    const padding = 18 + imageIdentificationFieldLength + colorMapOrigin;
+    let readCursor = 0;
+    let x = 0;
+    let y = 0;
+    let byte1 = 0;
+    let byte2 = 0;
+    let byte3 = 0;
+    let byte4 = 0;
+    let colorMapEntryOffset = 0;
+    for (let i = 0; i < readArrayLength; ++i) {
+      const packet = imageDataBytes[readCursor++];
+      if (packet >= 128) {
+        if (pixelSize === 1) {
+          colorMapEntryOffset = padding + colorMapPixelSize * imageDataBytes[readCursor++];
+        } else {
+          colorMapEntryOffset = padding + colorMapPixelSize * dataView.getUint16(imageDataFieldOffset + readCursor, true);
+          readCursor += 2;
+        }
+        const repetition = packet - 128;
+        byte1 = bytes[colorMapEntryOffset];
+        if (colorMapPixelSize > 2) {
+          byte2 = bytes[colorMapEntryOffset + 1];
+          byte3 = bytes[colorMapEntryOffset + 2];
+        }
+        if (colorMapPixelSize > 3) {
+          byte4 = bytes[colorMapEntryOffset + 3];
+        }
+        for (let i2 = 0; i2 <= repetition; ++i2) {
+          const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+          data[canvasOffset + 3] = 255;
+          switch (colorMapPixelSize) {
+            case 1: {
+              data[canvasOffset] = byte1;
+              data[canvasOffset + 1] = byte1;
+              data[canvasOffset + 2] = byte1;
+              break;
+            }
+            case 3: {
+              data[canvasOffset] = byte3;
+              data[canvasOffset + 1] = byte2;
+              data[canvasOffset + 2] = byte1;
+              break;
+            }
+            case 4: {
+              data[canvasOffset] = byte3;
+              data[canvasOffset + 1] = byte2;
+              data[canvasOffset + 2] = byte1;
+              data[canvasOffset + 3] = byte4;
+              break;
+            }
+          }
+          if (x === imageWidth - 1) {
+            x = 0;
+            y += 1;
+          } else {
+            x += 1;
+          }
+        }
+      } else {
+        const repetition = packet;
+        for (let i2 = 0; i2 <= repetition; ++i2) {
+          const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+          if (pixelSize === 1) {
+            colorMapEntryOffset = padding + colorMapPixelSize * imageDataBytes[readCursor++];
+          } else {
+            colorMapEntryOffset = padding + colorMapPixelSize * dataView.getUint16(imageDataFieldOffset + readCursor, true);
+            readCursor += 2;
+          }
+          data[canvasOffset + 3] = 255;
+          switch (colorMapPixelSize) {
+            case 1: {
+              data[canvasOffset] = bytes[colorMapEntryOffset];
+              data[canvasOffset + 1] = bytes[colorMapEntryOffset];
+              data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+              break;
+            }
+            case 3: {
+              data[canvasOffset] = bytes[colorMapEntryOffset + 2];
+              data[canvasOffset + 1] = bytes[colorMapEntryOffset + 1];
+              data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+              break;
+            }
+            case 4: {
+              data[canvasOffset] = bytes[colorMapEntryOffset + 2];
+              data[canvasOffset + 1] = bytes[colorMapEntryOffset + 1];
+              data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+              data[canvasOffset + 3] = bytes[colorMapEntryOffset + 3];
+              break;
+            }
+          }
+          if (x === imageWidth - 1) {
+            x = 0;
+            y += 1;
+          } else {
+            x += 1;
+          }
+        }
+      }
+    }
+    console.timeEnd("run length encoded color mapped loop");
+  }
+  async draw(canvas2) {
+    console.time("draw");
+    const context = canvas2.getContext("2d");
+    if (!context) {
+      alert("Failed to get canvas context");
+      return;
+    }
+    context.clearRect(0, 0, canvas2.width, canvas2.height);
+    canvas2.width = this.stats.imageWidth;
+    canvas2.height = this.stats.imageHeight;
+    context.fillStyle = "rgba(40, 40, 40, 255)";
+    context.fillRect(0, 0, canvas2.width, canvas2.height);
+    const imageData = context.createImageData(this.stats.imageWidth, this.stats.imageHeight);
+    const begin = performance.now();
+    if (this.stats.rleEncoded) {
+      if (this.stats.imageType === 9 /* RUN_LENGTH_ENCODED_COLOR_MAPPED */) {
+        this.drawRunLengthEncodedColorMapped(imageData);
+      } else {
+        this.drawRunLengthEncoded(imageData);
+      }
+    } else {
+      if (this.stats.imageType === 1 /* COLOR_MAPPED */) {
+        this.drawColorMapped(imageData);
+      } else {
+        if (this.stats.pixelSize === 1) {
+          this.drawUncompressedGrayscale(imageData);
+        } else {
+          this.drawUncompressed(imageData);
+        }
+      }
+    }
+    if (this.stats.pixelSize === 4) {
+      const { GRID_SIZE } = _TGAImage;
+      const { imageWidth, imageHeight } = this.stats;
+      let evenRow = 0;
+      for (let y = 0; y < imageHeight; y += GRID_SIZE) {
+        let evenColumn = 0;
+        for (let x = 0; x < imageWidth; x += GRID_SIZE) {
+          context.fillStyle = evenRow ^ evenColumn ? "rgba(180, 180, 180, 1)" : "rgba(100, 100, 100, 1)";
+          context.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+          evenColumn = evenColumn === 1 ? 0 : 1;
+        }
+        evenRow = evenRow === 1 ? 0 : 1;
+      }
+      const bitmap = await createImageBitmap(imageData, { premultiplyAlpha: "premultiply" });
+      context.drawImage(bitmap, 0, 0);
+      bitmap.close();
+    } else {
+      context.putImageData(imageData, 0, 0);
+    }
+    this.stats.duration = performance.now() - begin;
+    console.info(this.stats.duration);
+    console.timeEnd("draw");
+  }
+};
+
+// src/index.ts
+new EventSource("/esbuild").addEventListener("change", () => location.reload());
+var fileInput = document.querySelector("input[type=file]");
+var canvas = document.querySelector("canvas");
+var table = document.querySelector("table");
+var template = document.querySelector("#row");
+function populateStatsTable(tga) {
+  table.innerHTML = "";
+  const rows = generateImageInformationTable(tga);
+  for (const [key, value] of Object.entries(rows)) {
+    const clone = template.content.cloneNode(true);
+    const tds = clone.querySelectorAll("td");
+    tds[0].innerText = key;
+    tds[1].innerText = value;
+    table.appendChild(clone);
+  }
+  console.table(rows);
+}
+async function drawToCanvas() {
+  try {
+    const { files } = fileInput;
+    if (!files?.length) {
+      return;
+    }
+    const file = files.item(0);
+    if (!file)
+      return;
+    const arrayBuffer = await readFile(file);
+    const tga = new TGAImage(arrayBuffer);
+    tga.draw(canvas).then(() => {
+      populateStatsTable(tga);
+    }).catch(console.trace);
+  } catch (ex) {
+    alert(ex.message);
+  }
+}
+fileInput.addEventListener("change", () => {
+  drawToCanvas();
+});
