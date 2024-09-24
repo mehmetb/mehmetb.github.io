@@ -9,6 +9,14 @@ var ImageType = /* @__PURE__ */ ((ImageType2) => {
   ImageType2[ImageType2["RUN_LENGTH_ENCODED_GRAY_SCALE"] = 11] = "RUN_LENGTH_ENCODED_GRAY_SCALE";
   return ImageType2;
 })(ImageType || {});
+var AttributesType = /* @__PURE__ */ ((AttributesType2) => {
+  AttributesType2[AttributesType2["NO_ALPHA_DATA"] = 0] = "NO_ALPHA_DATA";
+  AttributesType2[AttributesType2["UNDEFINED_IGNORED"] = 1] = "UNDEFINED_IGNORED";
+  AttributesType2[AttributesType2["UNDEFINED_RETAINED"] = 2] = "UNDEFINED_RETAINED";
+  AttributesType2[AttributesType2["USEFUL_ALPHA_CHANNEL"] = 3] = "USEFUL_ALPHA_CHANNEL";
+  AttributesType2[AttributesType2["PREMULTIPLIED_ALPHA"] = 4] = "PREMULTIPLIED_ALPHA";
+  return AttributesType2;
+})(AttributesType || {});
 
 // src/utils.ts
 function readFile(file) {
@@ -27,6 +35,22 @@ function capitalize(str) {
     return group1.toUpperCase();
   });
 }
+function getAttributesType(tga) {
+  switch (tga.stats.attributesType) {
+    case 0 /* NO_ALPHA_DATA */:
+      return "No alpha";
+    case 1 /* UNDEFINED_IGNORED */:
+      return "Undefined; ignored";
+    case 2 /* UNDEFINED_RETAINED */:
+      return "Undefined; retained";
+    case 3 /* USEFUL_ALPHA_CHANNEL */:
+      return "Useful alpha channel";
+    case 4 /* PREMULTIPLIED_ALPHA */:
+      return "Premultiplied alpha";
+    default:
+      return void 0;
+  }
+}
 function generateImageInformationTable(tga) {
   const stats = {
     version: tga.stats.version,
@@ -44,6 +68,10 @@ function generateImageInformationTable(tga) {
     colorMapPixelSize: tga.stats.colorMapPixelSize,
     processingTook: `${tga.stats.duration} ms`
   };
+  const attributesType = getAttributesType(tga);
+  if (attributesType) {
+    stats.attributesType = attributesType;
+  }
   const rows = {};
   for (const [key, value] of Object.entries(stats)) {
     const firsCharacter = key[0];
@@ -55,6 +83,13 @@ function generateImageInformationTable(tga) {
     rows[field] = value;
   }
   return rows;
+}
+function readBit(byteValue, bitIndex) {
+  return byteValue >> bitIndex & 1;
+}
+function readHighColor5BitsAndGetAsTrueColor(byteValue, startBitOffset) {
+  const value = readBit(byteValue, startBitOffset) * 16 + readBit(byteValue, startBitOffset - 1) * 8 + readBit(byteValue, startBitOffset - 2) * 4 + readBit(byteValue, startBitOffset - 3) * 2 + readBit(byteValue, startBitOffset - 4);
+  return Math.round(255 * (value / 31));
 }
 
 // src/ImageStats.ts
@@ -70,16 +105,31 @@ var ImageStats = class {
   imageWidth;
   imageHeight;
   pixelSize;
+  pixelSizeRaw;
   imageDescriptor;
   imageIdentificationFieldLength;
   imageDataFieldOffset;
   colorMapOrigin;
   colorMapLength;
   colorMapPixelSize;
-  extensionOffset;
+  extensionOffset = 0;
   version;
   topToBottom;
   duration = 0;
+  authorName;
+  authorComments;
+  dateTimeStamp;
+  jobId;
+  jobTime;
+  softwareId;
+  softwareVersion;
+  keyColor;
+  aspectRatio;
+  gammaValue;
+  colorCorrectionOffset = 0;
+  postageStampOffset = 0;
+  scanLineOffset;
+  attributesType;
   get arrayBuffer() {
     return this.#arrayBuffer;
   }
@@ -101,11 +151,15 @@ var ImageStats = class {
     this.imageWidth = this.dataView.getUint16(12, true);
     this.imageHeight = this.dataView.getUint16(14, true);
     this.pixelSize = this.bytes[16] / 8;
+    this.pixelSizeRaw = this.bytes[16];
     this.imageDescriptor = this.bytes[17];
     this.imageDataFieldOffset = this.getImageDataFieldOffset();
     this.detectVersion();
     if (this.version === 2) {
       this.extensionOffset = this.dataView.getUint32(this.dataView.byteLength - 26, true);
+      if (this.extensionOffset !== 0) {
+        this.readExtension();
+      }
     }
     this.topToBottom = this.isTopToBottom();
     if (this.imageType === 9 /* RUN_LENGTH_ENCODED_COLOR_MAPPED */ || this.imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */ || this.imageType === 10 /* RUN_LENGTH_ENCODED_TRUE_COLOR */) {
@@ -130,7 +184,7 @@ var ImageStats = class {
     this.version = footerStr === v2Footer ? 2 : 1;
   }
   isTopToBottom() {
-    return (this.imageDescriptor & 16 /* TOP_TO_BOTTOM */) === 16 /* TOP_TO_BOTTOM */;
+    return (this.imageDescriptor & 32 /* TOP_TO_BOTTOM */) === 32 /* TOP_TO_BOTTOM */;
   }
   getFooterOffset() {
     if (this.version === 2) {
@@ -140,6 +194,71 @@ var ImageStats = class {
       return this.arrayBuffer.byteLength - 26;
     }
     return this.arrayBuffer.byteLength;
+  }
+  readExtension() {
+    const extensionSize = this.dataView.getUint16(this.extensionOffset, true);
+    if (extensionSize !== 495) {
+      console.warn("Not a valid TGA extension");
+      return;
+    }
+    const EO = this.extensionOffset;
+    const textDecoder = new TextDecoder();
+    const readString = (startOffset, endOffset) => {
+      const buffer = this.bytes.subarray(startOffset, endOffset);
+      return textDecoder.decode(buffer);
+    };
+    const readShorts = (startOffset, numberOfShortsToRead) => {
+      const shorts = [];
+      const endOffset = startOffset + numberOfShortsToRead * 2;
+      for (let offset = startOffset; offset < endOffset; offset += 2) {
+        shorts.push(this.dataView.getUint16(offset, true));
+      }
+      return shorts;
+    };
+    this.authorName = readString(EO + 1, EO + 42);
+    this.authorComments = readString(EO + 42, EO + 366);
+    this.jobId = readString(EO + 379, EO + 419);
+    this.softwareId = readString(EO + 426, EO + 466);
+    this.softwareVersion = readString(EO + 467, EO + 469);
+    const [month, day, year, hour, minute, second] = readShorts(EO + 367, 6);
+    if (year !== 0) {
+      this.dateTimeStamp = new Date(year, month - 1, day, hour, minute, second);
+    }
+    this.jobTime = "0";
+    const jobTimeStrParts = [];
+    const jobTimeObject = {
+      hour: this.dataView.getUint16(EO + 420, true),
+      minute: this.dataView.getUint16(EO + 422, true),
+      second: this.dataView.getUint16(EO + 424, true)
+    };
+    for (const [key, value] of Object.entries(jobTimeObject)) {
+      if (value > 1) {
+        jobTimeStrParts.push(`${value} ${key}s`);
+      } else if (value > 0) {
+        jobTimeStrParts.push(`${value} ${key}`);
+      }
+    }
+    this.jobTime = jobTimeStrParts.join(" ");
+    const blue = this.bytes[EO + 470];
+    const green = this.bytes[EO + 471];
+    const red = this.bytes[EO + 472];
+    const alpha = this.bytes[EO + 473];
+    this.keyColor = { red, green, blue, alpha };
+    const [aspectRatioNumerator, aspectRatioDenominator] = readShorts(EO + 474, 2);
+    if (aspectRatioDenominator !== 0) {
+      this.aspectRatio = `${aspectRatioNumerator}/${aspectRatioDenominator}`;
+    }
+    const [gammaNumerator, gammaDenominator] = readShorts(EO + 478, 2);
+    if (gammaDenominator !== 0) {
+      this.gammaValue = `${gammaNumerator}/${gammaDenominator}`;
+    }
+    this.colorCorrectionOffset = this.dataView.getUint32(EO + 482, true);
+    this.postageStampOffset = this.dataView.getUint32(EO + 486, true);
+    this.scanLineOffset = this.dataView.getUint32(EO + 490, true);
+    const attr = this.dataView.getUint8(EO + 494);
+    if (AttributesType[attr]) {
+      this.attributesType = attr;
+    }
   }
 };
 
@@ -172,32 +291,70 @@ var TGAImage = class _TGAImage {
     }
   }
   drawUncompressedGrayscale(imageData) {
-    console.time("uncompressed loop");
-    const { imageHeight, imageWidth, topToBottom } = this.stats;
+    console.time("uncompressed grayscale loop");
+    const { imageHeight, imageWidth, topToBottom, pixelSize } = this.stats;
     const { data } = imageData;
     const { imageDataBytes } = this;
     data.fill(255);
     for (let y = 0; y < imageHeight; ++y) {
       for (let x = 0; x < imageWidth; ++x) {
-        const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-        const byteOffset = x + y * imageWidth;
-        data[canvasOffset] = imageDataBytes[byteOffset];
-        data[canvasOffset + 1] = imageDataBytes[byteOffset];
-        data[canvasOffset + 2] = imageDataBytes[byteOffset];
+        switch (pixelSize) {
+          case 1: {
+            const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+            const byteOffset = x + y * imageWidth;
+            data[canvasOffset] = imageDataBytes[byteOffset];
+            data[canvasOffset + 1] = imageDataBytes[byteOffset];
+            data[canvasOffset + 2] = imageDataBytes[byteOffset];
+            break;
+          }
+          case 4: {
+            const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
+            const byteOffset = x + y * imageWidth;
+            data[canvasOffset] = imageDataBytes[byteOffset];
+            data[canvasOffset + 1] = imageDataBytes[byteOffset];
+            data[canvasOffset + 2] = imageDataBytes[byteOffset];
+            break;
+          }
+          default: {
+            alert("Unsupported pixel size");
+            return;
+          }
+        }
       }
     }
-    console.timeEnd("uncompressed loop");
+    console.timeEnd("uncompressed grayscale loop");
   }
   drawUncompressed(imageData) {
     console.time("uncompressed loop");
-    const { imageHeight, imageWidth, pixelSize, topToBottom } = this.stats;
+    const { imageHeight, imageWidth, pixelSize, topToBottom, attributesType, imageType } = this.stats;
     const { data } = imageData;
     const { imageDataBytes } = this;
+    const ab = new ArrayBuffer(2);
+    const ua = new Uint8Array(ab);
+    const dv = new DataView(ab);
+    let hasAlpha = true;
+    if (attributesType && attributesType !== 3 /* USEFUL_ALPHA_CHANNEL */ && attributesType !== 4 /* PREMULTIPLIED_ALPHA */) {
+      hasAlpha = false;
+    }
     for (let y = 0; y < imageHeight; ++y) {
       for (let x = 0; x < imageWidth; ++x) {
         const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
         data[canvasOffset + 3] = 255;
         switch (pixelSize) {
+          case 2: {
+            const byteOffset = y * imageWidth * 2 + x * 2;
+            if (imageType === 3 /* GRAY_SCALE */) {
+              data[canvasOffset + 3] = imageDataBytes[byteOffset + 1];
+            } else {
+              ua[0] = imageDataBytes[byteOffset];
+              ua[1] = imageDataBytes[byteOffset + 1];
+              const byteValue = dv.getUint16(0, true);
+              data[canvasOffset] = readHighColor5BitsAndGetAsTrueColor(byteValue, 14);
+              data[canvasOffset + 1] = readHighColor5BitsAndGetAsTrueColor(byteValue, 9);
+              data[canvasOffset + 2] = readHighColor5BitsAndGetAsTrueColor(byteValue, 4);
+            }
+            break;
+          }
           case 3: {
             const byteOffset = y * imageWidth * 3 + x * 3;
             data[canvasOffset] = imageDataBytes[byteOffset + 2];
@@ -207,10 +364,12 @@ var TGAImage = class _TGAImage {
           }
           case 4: {
             const byteOffset = y * imageWidth * 4 + x * 4;
-            data[canvasOffset] = imageDataBytes[byteOffset + 3];
-            data[canvasOffset + 1] = imageDataBytes[byteOffset + 2];
-            data[canvasOffset + 2] = imageDataBytes[byteOffset + 1];
-            data[canvasOffset + 3] = imageDataBytes[byteOffset];
+            data[canvasOffset] = imageDataBytes[byteOffset + 2];
+            data[canvasOffset + 1] = imageDataBytes[byteOffset + 1];
+            data[canvasOffset + 2] = imageDataBytes[byteOffset];
+            if (hasAlpha) {
+              data[canvasOffset + 3] = imageDataBytes[byteOffset + 3];
+            }
             break;
           }
         }
@@ -220,10 +379,14 @@ var TGAImage = class _TGAImage {
   }
   drawRunLengthEncoded(imageData) {
     console.time("run length encoded loop");
-    const { imageHeight, imageWidth, pixelSize, topToBottom } = this.stats;
+    const { imageHeight, imageWidth, pixelSize, topToBottom, attributesType, imageType } = this.stats;
     const { data } = imageData;
-    const { imageDataBytes, dataView } = this;
+    const { imageDataBytes } = this;
     const readArrayLength = imageDataBytes.length;
+    const ab = new ArrayBuffer(2);
+    const ua = new Uint8Array(ab);
+    const dv = new DataView(ab);
+    let hasAlpha = true;
     let readCursor = 0;
     let x = 0;
     let y = 0;
@@ -231,17 +394,32 @@ var TGAImage = class _TGAImage {
     let byte2;
     let byte3;
     let byte4;
+    if (attributesType && attributesType !== 3 /* USEFUL_ALPHA_CHANNEL */ && attributesType !== 4 /* PREMULTIPLIED_ALPHA */) {
+      hasAlpha = false;
+    }
     for (let i = 0; i < readArrayLength; ++i) {
       const packet = imageDataBytes[readCursor++];
       if (packet >= 128) {
         const repetition = packet - 128;
-        byte1 = imageDataBytes[readCursor++];
-        if (pixelSize > 2) {
-          byte2 = imageDataBytes[readCursor++];
-          byte3 = imageDataBytes[readCursor++];
-        }
-        if (pixelSize > 3) {
-          byte4 = imageDataBytes[readCursor++];
+        switch (pixelSize) {
+          case 1:
+            byte1 = imageDataBytes[readCursor++];
+            break;
+          case 2:
+            byte1 = imageDataBytes[readCursor++];
+            byte2 = imageDataBytes[readCursor++];
+            break;
+          case 3:
+            byte1 = imageDataBytes[readCursor++];
+            byte2 = imageDataBytes[readCursor++];
+            byte3 = imageDataBytes[readCursor++];
+            break;
+          case 4:
+            byte1 = imageDataBytes[readCursor++];
+            byte2 = imageDataBytes[readCursor++];
+            byte3 = imageDataBytes[readCursor++];
+            byte4 = imageDataBytes[readCursor++];
+            break;
         }
         for (let i2 = 0; i2 <= repetition; ++i2) {
           const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
@@ -251,6 +429,19 @@ var TGAImage = class _TGAImage {
               data[canvasOffset] = byte1;
               data[canvasOffset + 1] = byte1;
               data[canvasOffset + 2] = byte1;
+              break;
+            }
+            case 2: {
+              if (imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */) {
+                data[canvasOffset + 3] = byte2;
+              } else {
+                ua[0] = byte1;
+                ua[1] = byte2;
+                const byteValue = dv.getUint16(0, true);
+                data[canvasOffset] = readHighColor5BitsAndGetAsTrueColor(byteValue, 14);
+                data[canvasOffset + 1] = readHighColor5BitsAndGetAsTrueColor(byteValue, 9);
+                data[canvasOffset + 2] = readHighColor5BitsAndGetAsTrueColor(byteValue, 4);
+              }
               break;
             }
             case 3: {
@@ -263,7 +454,9 @@ var TGAImage = class _TGAImage {
               data[canvasOffset] = byte3;
               data[canvasOffset + 1] = byte2;
               data[canvasOffset + 2] = byte1;
-              data[canvasOffset + 3] = byte4;
+              if (hasAlpha) {
+                data[canvasOffset + 3] = byte4;
+              }
               break;
             }
           }
@@ -287,6 +480,20 @@ var TGAImage = class _TGAImage {
               readCursor += 1;
               break;
             }
+            case 2: {
+              if (imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */) {
+                readCursor += 1;
+                data[canvasOffset + 3] = imageDataBytes[readCursor++];
+              } else {
+                ua[0] = imageDataBytes[readCursor++];
+                ua[1] = imageDataBytes[readCursor++];
+                const byteValue = dv.getUint16(0, true);
+                data[canvasOffset] = readHighColor5BitsAndGetAsTrueColor(byteValue, 14);
+                data[canvasOffset + 1] = readHighColor5BitsAndGetAsTrueColor(byteValue, 9);
+                data[canvasOffset + 2] = readHighColor5BitsAndGetAsTrueColor(byteValue, 4);
+              }
+              break;
+            }
             case 3: {
               data[canvasOffset] = imageDataBytes[readCursor + 2];
               data[canvasOffset + 1] = imageDataBytes[readCursor + 1];
@@ -298,7 +505,9 @@ var TGAImage = class _TGAImage {
               data[canvasOffset] = imageDataBytes[readCursor + 2];
               data[canvasOffset + 1] = imageDataBytes[readCursor + 1];
               data[canvasOffset + 2] = imageDataBytes[readCursor];
-              data[canvasOffset + 3] = imageDataBytes[readCursor + 3];
+              if (hasAlpha) {
+                data[canvasOffset + 3] = imageDataBytes[readCursor + 3];
+              }
               readCursor += 4;
               break;
             }
@@ -340,6 +549,13 @@ var TGAImage = class _TGAImage {
             data[canvasOffset] = bytes[colorMapEntryOffset];
             data[canvasOffset + 1] = bytes[colorMapEntryOffset];
             data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+            break;
+          }
+          case 2: {
+            const byteValue = dataView.getUint16(colorMapEntryOffset, true);
+            data[canvasOffset] = readHighColor5BitsAndGetAsTrueColor(byteValue, 14);
+            data[canvasOffset + 1] = readHighColor5BitsAndGetAsTrueColor(byteValue, 9);
+            data[canvasOffset + 2] = readHighColor5BitsAndGetAsTrueColor(byteValue, 4);
             break;
           }
           case 3: {
@@ -403,6 +619,13 @@ var TGAImage = class _TGAImage {
               data[canvasOffset + 2] = byte1;
               break;
             }
+            case 2: {
+              const byteValue = dataView.getUint16(colorMapEntryOffset, true);
+              data[canvasOffset] = readHighColor5BitsAndGetAsTrueColor(byteValue, 14);
+              data[canvasOffset + 1] = readHighColor5BitsAndGetAsTrueColor(byteValue, 9);
+              data[canvasOffset + 2] = readHighColor5BitsAndGetAsTrueColor(byteValue, 4);
+              break;
+            }
             case 3: {
               data[canvasOffset] = byte3;
               data[canvasOffset + 1] = byte2;
@@ -440,6 +663,13 @@ var TGAImage = class _TGAImage {
               data[canvasOffset] = bytes[colorMapEntryOffset];
               data[canvasOffset + 1] = bytes[colorMapEntryOffset];
               data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+              break;
+            }
+            case 2: {
+              const byteValue = dataView.getUint16(colorMapEntryOffset, true);
+              data[canvasOffset] = readHighColor5BitsAndGetAsTrueColor(byteValue, 14);
+              data[canvasOffset + 1] = readHighColor5BitsAndGetAsTrueColor(byteValue, 9);
+              data[canvasOffset + 2] = readHighColor5BitsAndGetAsTrueColor(byteValue, 4);
               break;
             }
             case 3: {
@@ -498,7 +728,8 @@ var TGAImage = class _TGAImage {
         }
       }
     }
-    if (this.stats.pixelSize === 4) {
+    const hasTransparency = this.stats.pixelSize === 4 || this.stats.colorMapPixelSize === 4 || this.stats.pixelSize === 2 && (this.stats.imageType === 3 /* GRAY_SCALE */ || this.stats.imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */);
+    if (hasTransparency) {
       const { GRID_SIZE } = _TGAImage;
       const { imageWidth, imageHeight } = this.stats;
       let evenRow = 0;
