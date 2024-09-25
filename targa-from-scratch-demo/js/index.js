@@ -1,14 +1,4 @@
-// src/types.ts
-var ImageType = /* @__PURE__ */ ((ImageType2) => {
-  ImageType2[ImageType2["NO_IMAGE_DATA"] = 0] = "NO_IMAGE_DATA";
-  ImageType2[ImageType2["COLOR_MAPPED"] = 1] = "COLOR_MAPPED";
-  ImageType2[ImageType2["TRUE_COLOR"] = 2] = "TRUE_COLOR";
-  ImageType2[ImageType2["GRAY_SCALE"] = 3] = "GRAY_SCALE";
-  ImageType2[ImageType2["RUN_LENGTH_ENCODED_COLOR_MAPPED"] = 9] = "RUN_LENGTH_ENCODED_COLOR_MAPPED";
-  ImageType2[ImageType2["RUN_LENGTH_ENCODED_TRUE_COLOR"] = 10] = "RUN_LENGTH_ENCODED_TRUE_COLOR";
-  ImageType2[ImageType2["RUN_LENGTH_ENCODED_GRAY_SCALE"] = 11] = "RUN_LENGTH_ENCODED_GRAY_SCALE";
-  return ImageType2;
-})(ImageType || {});
+// src/lib/types.ts
 var AttributesType = /* @__PURE__ */ ((AttributesType2) => {
   AttributesType2[AttributesType2["NO_ALPHA_DATA"] = 0] = "NO_ALPHA_DATA";
   AttributesType2[AttributesType2["UNDEFINED_IGNORED"] = 1] = "UNDEFINED_IGNORED";
@@ -18,79 +8,13 @@ var AttributesType = /* @__PURE__ */ ((AttributesType2) => {
   return AttributesType2;
 })(AttributesType || {});
 
-// src/utils.ts
-function readFile(file) {
-  return new Promise((resolve, reject) => {
-    const fileReader = new FileReader();
-    fileReader.addEventListener("load", () => {
-      const result = fileReader.result;
-      resolve(result);
-    });
-    fileReader.addEventListener("error", reject);
-    fileReader.readAsArrayBuffer(file);
-  });
-}
-function capitalize(str) {
-  return str.replace(/\b(\w)/g, (_, group1) => {
-    return group1.toUpperCase();
-  });
-}
-function getAttributesType(tga) {
-  switch (tga.stats.attributesType) {
-    case 0 /* NO_ALPHA_DATA */:
-      return "No alpha";
-    case 1 /* UNDEFINED_IGNORED */:
-      return "Undefined; ignored";
-    case 2 /* UNDEFINED_RETAINED */:
-      return "Undefined; retained";
-    case 3 /* USEFUL_ALPHA_CHANNEL */:
-      return "Useful alpha channel";
-    case 4 /* PREMULTIPLIED_ALPHA */:
-      return "Premultiplied alpha";
-    default:
-      return void 0;
-  }
-}
-function generateImageInformationTable(tga) {
-  const stats = {
-    version: tga.stats.version,
-    imageType: capitalize(ImageType[tga.stats.imageType].toLowerCase().replace(/_/g, " ")),
-    xOrigin: tga.stats.xOrigin,
-    yOrigin: tga.stats.yOrigin,
-    imageWidth: tga.stats.imageWidth,
-    imageHeight: tga.stats.imageHeight,
-    pixelSize: tga.stats.pixelSize,
-    imageDescriptor: tga.stats.imageDescriptor.toString(2).padStart(8, "0"),
-    imageIdentificationFieldLength: tga.stats.imageIdentificationFieldLength,
-    topToBottom: tga.stats.isTopToBottom(),
-    colorMapOrigin: tga.stats.colorMapOrigin,
-    colorMapLength: tga.stats.colorMapLength,
-    colorMapPixelSize: tga.stats.colorMapPixelSize,
-    processingTook: `${tga.stats.duration} ms`
-  };
-  const attributesType = getAttributesType(tga);
-  if (attributesType) {
-    stats.attributesType = attributesType;
-  }
-  const rows = {};
-  for (const [key, value] of Object.entries(stats)) {
-    const firsCharacter = key[0];
-    const field = `${firsCharacter.toUpperCase()}${key.replace(/(?!\b[A-Z])([A-Z])/g, " $1").substring(1)}`;
-    if (typeof value === "boolean") {
-      rows[field] = value ? "Yes" : "No";
-      continue;
-    }
-    rows[field] = value;
-  }
-  return rows;
-}
-
-// src/ImageStats.ts
-var ImageStats = class {
+// src/lib/ImageFileInfo.ts
+var ImageFileInfo = class {
   #arrayBuffer;
   dataView;
   bytes;
   rleEncoded = false;
+  hasTransparency = false;
   colorMapType;
   imageType;
   xOrigin;
@@ -108,7 +32,6 @@ var ImageStats = class {
   extensionOffset = 0;
   version;
   topToBottom;
-  duration = 0;
   authorName;
   authorComments;
   dateTimeStamp;
@@ -119,8 +42,8 @@ var ImageStats = class {
   keyColor;
   aspectRatio;
   gammaValue;
-  colorCorrectionOffset = 0;
-  postageStampOffset = 0;
+  colorCorrectionOffset;
+  postageStampOffset;
   scanLineOffset;
   attributesType;
   get arrayBuffer() {
@@ -158,6 +81,7 @@ var ImageStats = class {
     if (this.imageType === 9 /* RUN_LENGTH_ENCODED_COLOR_MAPPED */ || this.imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */ || this.imageType === 10 /* RUN_LENGTH_ENCODED_TRUE_COLOR */) {
       this.rleEncoded = true;
     }
+    this.hasTransparency = this.pixelSize === 4 || this.colorMapPixelSize === 4 || this.pixelSize === 2 && (this.imageType === 3 /* GRAY_SCALE */ || this.imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */);
   }
   getImageDataFieldOffset() {
     switch (this.colorMapType) {
@@ -212,7 +136,12 @@ var ImageStats = class {
     this.authorComments = readString(EO + 42, EO + 366);
     this.jobId = readString(EO + 379, EO + 419);
     this.softwareId = readString(EO + 426, EO + 466);
-    this.softwareVersion = readString(EO + 467, EO + 469);
+    const softwareVersion = this.dataView.getUint16(EO + 467, true);
+    const softwareVersionLetter = String.fromCharCode(this.dataView.getUint8(EO + 469));
+    const softwareVersionUnused = softwareVersion === 0 && softwareVersionLetter === " ";
+    if (!softwareVersionUnused) {
+      this.softwareVersion = `${(softwareVersion / 100).toFixed(2)}${softwareVersionLetter}`;
+    }
     const [month, day, year, hour, minute, second] = readShorts(EO + 367, 6);
     if (year !== 0) {
       this.dateTimeStamp = new Date(year, month - 1, day, hour, minute, second);
@@ -255,14 +184,13 @@ var ImageStats = class {
   }
 };
 
-// src/TGAImage.ts
-var TGAImage = class _TGAImage {
-  static GRID_SIZE = 30;
+// src/lib/TGAFile.ts
+var TGAFile = class {
   #arrayBuffer;
-  dataView;
   bytes;
+  dataView;
   imageDataBytes;
-  stats;
+  fileInfo;
   get arrayBuffer() {
     return this.#arrayBuffer;
   }
@@ -273,270 +201,299 @@ var TGAImage = class _TGAImage {
   }
   constructor(arrayBuffer) {
     this.arrayBuffer = arrayBuffer;
-    this.stats = new ImageStats(arrayBuffer);
-    if (this.stats.rleEncoded) {
+    this.fileInfo = new ImageFileInfo(arrayBuffer);
+    if (this.fileInfo.rleEncoded) {
       this.imageDataBytes = this.bytes.subarray(
-        this.stats.imageDataFieldOffset,
-        this.stats.getFooterOffset()
+        this.fileInfo.imageDataFieldOffset,
+        this.fileInfo.getFooterOffset()
       );
     } else {
-      this.imageDataBytes = this.bytes.subarray(this.stats.imageDataFieldOffset);
+      this.imageDataBytes = this.bytes.subarray(this.fileInfo.imageDataFieldOffset);
     }
   }
-  drawUncompressedGrayscale(imageData) {
-    console.time("uncompressed grayscale loop");
-    const { imageHeight, imageWidth, topToBottom, pixelSize } = this.stats;
-    const { data } = imageData;
-    const { imageDataBytes } = this;
-    data.fill(255);
-    for (let y = 0; y < imageHeight; ++y) {
-      for (let x = 0; x < imageWidth; ++x) {
-        switch (pixelSize) {
-          case 1: {
-            const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-            const byteOffset = x + y * imageWidth;
-            data[canvasOffset] = imageDataBytes[byteOffset];
-            data[canvasOffset + 1] = imageDataBytes[byteOffset];
-            data[canvasOffset + 2] = imageDataBytes[byteOffset];
-            break;
+};
+
+// src/lib/draw-methods/drawColorMapped.ts
+function drawColorMapped(imageData, tgaFile) {
+  const {
+    imageHeight,
+    imageWidth,
+    pixelSize,
+    colorMapPixelSize,
+    colorMapOrigin,
+    imageIdentificationFieldLength,
+    imageDataFieldOffset,
+    imageType
+  } = tgaFile.fileInfo;
+  const { data } = imageData;
+  const { imageDataBytes, bytes, dataView } = tgaFile;
+  const padding = 18 + imageIdentificationFieldLength + colorMapOrigin;
+  let canvasOffset = 0;
+  let byteOffset = 0;
+  for (let y = 0; y < imageHeight; ++y) {
+    for (let x = 0; x < imageWidth; ++x) {
+      const colorMapEntryOffset = padding + colorMapPixelSize * (pixelSize === 1 ? imageDataBytes[byteOffset] : dataView.getUint16(imageDataFieldOffset + byteOffset, true));
+      switch (colorMapPixelSize) {
+        case 1: {
+          data[canvasOffset] = bytes[colorMapEntryOffset];
+          data[canvasOffset + 1] = bytes[colorMapEntryOffset];
+          data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+          break;
+        }
+        case 2: {
+          if (imageType === 3 /* GRAY_SCALE */) {
+            data[canvasOffset + 3] = imageDataBytes[colorMapEntryOffset + 1];
+          } else {
+            const byteValue = dataView.getUint16(colorMapEntryOffset, true);
+            data[canvasOffset] = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
+            data[canvasOffset + 1] = Math.round(((byteValue & 992) >> 5) / 31 * 255);
+            data[canvasOffset + 2] = Math.round((byteValue & 31) / 31 * 255);
           }
-          case 4: {
-            const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-            const byteOffset = x + y * imageWidth;
-            data[canvasOffset] = imageDataBytes[byteOffset];
-            data[canvasOffset + 1] = imageDataBytes[byteOffset];
-            data[canvasOffset + 2] = imageDataBytes[byteOffset];
-            break;
-          }
-          default: {
-            alert("Unsupported pixel size");
-            return;
-          }
+          break;
+        }
+        case 3: {
+          data[canvasOffset] = bytes[colorMapEntryOffset + 2];
+          data[canvasOffset + 1] = bytes[colorMapEntryOffset + 1];
+          data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+          break;
+        }
+        case 4: {
+          data[canvasOffset] = bytes[colorMapEntryOffset + 2];
+          data[canvasOffset + 1] = bytes[colorMapEntryOffset + 1];
+          data[canvasOffset + 2] = bytes[colorMapEntryOffset];
+          data[canvasOffset + 3] = bytes[colorMapEntryOffset + 3];
+          break;
         }
       }
+      canvasOffset += 4;
+      byteOffset += pixelSize;
     }
-    console.timeEnd("uncompressed grayscale loop");
   }
-  drawUncompressed(imageData) {
-    console.time("uncompressed loop");
-    const { imageHeight, imageWidth, pixelSize, topToBottom, attributesType, imageType } = this.stats;
-    const { data } = imageData;
-    const { imageDataBytes } = this;
-    const ab = new ArrayBuffer(2);
-    const ua = new Uint8Array(ab);
-    const dv = new DataView(ab);
-    let hasAlpha = true;
-    if (attributesType && attributesType !== 3 /* USEFUL_ALPHA_CHANNEL */ && attributesType !== 4 /* PREMULTIPLIED_ALPHA */) {
-      hasAlpha = false;
-    }
-    for (let y = 0; y < imageHeight; ++y) {
-      for (let x = 0; x < imageWidth; ++x) {
-        const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-        data[canvasOffset + 3] = 255;
+}
+
+// src/lib/draw-methods/drawRunLengthEncoded.ts
+function drawRunLengthEncoded(imageData, tgaFile) {
+  const { pixelSize, attributesType, imageType } = tgaFile.fileInfo;
+  const { data } = imageData;
+  const { imageDataBytes } = tgaFile;
+  const readArrayLength = imageDataBytes.length;
+  const ab = new ArrayBuffer(2);
+  const ua = new Uint8Array(ab);
+  const dv = new DataView(ab);
+  let canvasOffset = 0;
+  let hasAlpha = true;
+  let readCursor = 0;
+  let byte1;
+  let byte2;
+  let byte3;
+  let byte4;
+  if (attributesType && attributesType !== 3 /* USEFUL_ALPHA_CHANNEL */ && attributesType !== 4 /* PREMULTIPLIED_ALPHA */) {
+    hasAlpha = false;
+  }
+  for (let i = 0; i < readArrayLength; ++i) {
+    const packet = imageDataBytes[readCursor++];
+    const isRLEPacket = packet >= 128;
+    const repetition = isRLEPacket ? packet - 128 : packet;
+    if (isRLEPacket) {
+      switch (pixelSize) {
+        case 1:
+          byte1 = imageDataBytes[readCursor++];
+          break;
+        case 2:
+          byte1 = imageDataBytes[readCursor++];
+          byte2 = imageDataBytes[readCursor++];
+          if (imageType !== 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */) {
+            ua[0] = byte1;
+            ua[1] = byte2;
+            const byteValue = dv.getUint16(0, true);
+            byte3 = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
+            byte2 = Math.round(((byteValue & 992) >> 5) / 31 * 255);
+            byte1 = Math.round((byteValue & 31) / 31 * 255);
+          }
+          break;
+        case 3:
+          byte1 = imageDataBytes[readCursor++];
+          byte2 = imageDataBytes[readCursor++];
+          byte3 = imageDataBytes[readCursor++];
+          break;
+        case 4:
+          byte1 = imageDataBytes[readCursor++];
+          byte2 = imageDataBytes[readCursor++];
+          byte3 = imageDataBytes[readCursor++];
+          byte4 = imageDataBytes[readCursor++];
+          break;
+      }
+      for (let j = 0; j <= repetition; ++j) {
         switch (pixelSize) {
-          case 2: {
-            const byteOffset = y * imageWidth * 2 + x * 2;
-            if (imageType === 3 /* GRAY_SCALE */) {
-              data[canvasOffset + 3] = imageDataBytes[byteOffset + 1];
+          case 1:
+            data[canvasOffset] = byte1;
+            data[canvasOffset + 1] = byte1;
+            data[canvasOffset + 2] = byte1;
+            break;
+          case 2:
+            if (imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */) {
+              data[canvasOffset] = 0;
+              data[canvasOffset + 1] = 0;
+              data[canvasOffset + 2] = 0;
+              data[canvasOffset + 3] = byte2;
             } else {
-              ua[0] = imageDataBytes[byteOffset];
-              ua[1] = imageDataBytes[byteOffset + 1];
-              const byteValue = dv.getUint16(0, true);
-              data[canvasOffset] = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
-              data[canvasOffset + 1] = Math.round(((byteValue & 992) >> 5) / 31 * 255);
-              data[canvasOffset + 2] = Math.round((byteValue & 31) / 31 * 255);
+              data[canvasOffset] = byte3;
+              data[canvasOffset + 1] = byte2;
+              data[canvasOffset + 2] = byte1;
+            }
+            break;
+          case 3:
+            data[canvasOffset] = byte3;
+            data[canvasOffset + 1] = byte2;
+            data[canvasOffset + 2] = byte1;
+            break;
+          case 4:
+            data[canvasOffset] = byte3;
+            data[canvasOffset + 1] = byte2;
+            data[canvasOffset + 2] = byte1;
+            if (hasAlpha) {
+              data[canvasOffset + 3] = byte4;
+            }
+            break;
+        }
+        canvasOffset += 4;
+      }
+      continue;
+    }
+    for (let j = 0; j <= repetition; ++j) {
+      switch (pixelSize) {
+        case 1: {
+          data[canvasOffset] = imageDataBytes[readCursor];
+          data[canvasOffset + 1] = imageDataBytes[readCursor];
+          data[canvasOffset + 2] = imageDataBytes[readCursor];
+          readCursor += 1;
+          break;
+        }
+        case 2: {
+          if (imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */) {
+            readCursor += 1;
+            data[canvasOffset] = 0;
+            data[canvasOffset + 1] = 0;
+            data[canvasOffset + 2] = 0;
+            data[canvasOffset + 3] = imageDataBytes[readCursor++];
+          } else {
+            ua[0] = imageDataBytes[readCursor++];
+            ua[1] = imageDataBytes[readCursor++];
+            const byteValue = dv.getUint16(0, true);
+            data[canvasOffset] = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
+            data[canvasOffset + 1] = Math.round(((byteValue & 992) >> 5) / 31 * 255);
+            data[canvasOffset + 2] = Math.round((byteValue & 31) / 31 * 255);
+          }
+          break;
+        }
+        case 3: {
+          data[canvasOffset] = imageDataBytes[readCursor + 2];
+          data[canvasOffset + 1] = imageDataBytes[readCursor + 1];
+          data[canvasOffset + 2] = imageDataBytes[readCursor];
+          readCursor += 3;
+          break;
+        }
+        case 4: {
+          data[canvasOffset] = imageDataBytes[readCursor + 2];
+          data[canvasOffset + 1] = imageDataBytes[readCursor + 1];
+          data[canvasOffset + 2] = imageDataBytes[readCursor];
+          if (hasAlpha) {
+            data[canvasOffset + 3] = imageDataBytes[readCursor + 3];
+          }
+          readCursor += 4;
+          break;
+        }
+      }
+      canvasOffset += 4;
+    }
+  }
+}
+
+// src/lib/draw-methods/drawRunLengthEncodedColorMapped.ts
+function drawRunLengthEncodedColorMapped(imageData, tgaFile) {
+  const { pixelSize, imageIdentificationFieldLength, colorMapOrigin, imageDataFieldOffset, colorMapPixelSize, imageType } = tgaFile.fileInfo;
+  const { data } = imageData;
+  const { imageDataBytes, bytes, dataView } = tgaFile;
+  const readArrayLength = imageDataBytes.length;
+  const padding = 18 + imageIdentificationFieldLength + colorMapOrigin;
+  let canvasOffset = 0;
+  let readCursor = 0;
+  let byte1 = 0;
+  let byte2 = 0;
+  let byte3 = 0;
+  let byte4 = 0;
+  let colorMapEntryOffset = 0;
+  for (let i = 0; i < readArrayLength; ++i) {
+    const packet = imageDataBytes[readCursor++];
+    if (packet >= 128) {
+      if (pixelSize === 1) {
+        colorMapEntryOffset = padding + colorMapPixelSize * imageDataBytes[readCursor++];
+      } else {
+        colorMapEntryOffset = padding + colorMapPixelSize * dataView.getUint16(imageDataFieldOffset + readCursor, true);
+        readCursor += 2;
+      }
+      const repetition = packet - 128;
+      byte1 = bytes[colorMapEntryOffset];
+      if (colorMapPixelSize > 2) {
+        byte2 = bytes[colorMapEntryOffset + 1];
+        byte3 = bytes[colorMapEntryOffset + 2];
+      }
+      if (colorMapPixelSize > 3) {
+        byte4 = bytes[colorMapEntryOffset + 3];
+      }
+      if (colorMapPixelSize === 2) {
+        if (imageType === 3 /* GRAY_SCALE */) {
+          byte4 = imageDataBytes[colorMapEntryOffset + 1];
+        } else {
+          const byteValue = dataView.getUint16(colorMapEntryOffset, true);
+          byte3 = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
+          byte2 = Math.round(((byteValue & 992) >> 5) / 31 * 255);
+          byte1 = Math.round((byteValue & 31) / 31 * 255);
+        }
+      }
+      for (let i2 = 0; i2 <= repetition; ++i2) {
+        switch (colorMapPixelSize) {
+          case 1: {
+            data[canvasOffset] = byte1;
+            data[canvasOffset + 1] = byte1;
+            data[canvasOffset + 2] = byte1;
+            break;
+          }
+          case 2: {
+            if (imageType === 3 /* GRAY_SCALE */) {
+              data[canvasOffset + 3] = byte4;
+            } else {
+              data[canvasOffset] = byte3;
+              data[canvasOffset + 1] = byte2;
+              data[canvasOffset + 2] = byte1;
             }
             break;
           }
           case 3: {
-            const byteOffset = y * imageWidth * 3 + x * 3;
-            data[canvasOffset] = imageDataBytes[byteOffset + 2];
-            data[canvasOffset + 1] = imageDataBytes[byteOffset + 1];
-            data[canvasOffset + 2] = imageDataBytes[byteOffset];
+            data[canvasOffset] = byte3;
+            data[canvasOffset + 1] = byte2;
+            data[canvasOffset + 2] = byte1;
             break;
           }
           case 4: {
-            const byteOffset = y * imageWidth * 4 + x * 4;
-            data[canvasOffset] = imageDataBytes[byteOffset + 2];
-            data[canvasOffset + 1] = imageDataBytes[byteOffset + 1];
-            data[canvasOffset + 2] = imageDataBytes[byteOffset];
-            if (hasAlpha) {
-              data[canvasOffset + 3] = imageDataBytes[byteOffset + 3];
-            }
+            data[canvasOffset] = byte3;
+            data[canvasOffset + 1] = byte2;
+            data[canvasOffset + 2] = byte1;
+            data[canvasOffset + 3] = byte4;
             break;
           }
         }
+        canvasOffset += 4;
       }
-    }
-    console.timeEnd("uncompressed loop");
-  }
-  drawRunLengthEncoded(imageData) {
-    console.time("run length encoded loop");
-    const { imageHeight, imageWidth, pixelSize, topToBottom, attributesType, imageType } = this.stats;
-    const { data } = imageData;
-    const { imageDataBytes } = this;
-    const readArrayLength = imageDataBytes.length;
-    const ab = new ArrayBuffer(2);
-    const ua = new Uint8Array(ab);
-    const dv = new DataView(ab);
-    let hasAlpha = true;
-    let readCursor = 0;
-    let x = 0;
-    let y = 0;
-    let byte1;
-    let byte2;
-    let byte3;
-    let byte4;
-    if (attributesType && attributesType !== 3 /* USEFUL_ALPHA_CHANNEL */ && attributesType !== 4 /* PREMULTIPLIED_ALPHA */) {
-      hasAlpha = false;
-    }
-    for (let i = 0; i < readArrayLength; ++i) {
-      const packet = imageDataBytes[readCursor++];
-      if (packet >= 128) {
-        const repetition = packet - 128;
-        switch (pixelSize) {
-          case 1:
-            byte1 = imageDataBytes[readCursor++];
-            break;
-          case 2:
-            byte1 = imageDataBytes[readCursor++];
-            byte2 = imageDataBytes[readCursor++];
-            break;
-          case 3:
-            byte1 = imageDataBytes[readCursor++];
-            byte2 = imageDataBytes[readCursor++];
-            byte3 = imageDataBytes[readCursor++];
-            break;
-          case 4:
-            byte1 = imageDataBytes[readCursor++];
-            byte2 = imageDataBytes[readCursor++];
-            byte3 = imageDataBytes[readCursor++];
-            byte4 = imageDataBytes[readCursor++];
-            break;
+    } else {
+      const repetition = packet;
+      for (let i2 = 0; i2 <= repetition; ++i2) {
+        if (pixelSize === 1) {
+          colorMapEntryOffset = padding + colorMapPixelSize * imageDataBytes[readCursor++];
+        } else {
+          colorMapEntryOffset = padding + colorMapPixelSize * dataView.getUint16(imageDataFieldOffset + readCursor, true);
+          readCursor += 2;
         }
-        for (let i2 = 0; i2 <= repetition; ++i2) {
-          const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-          data[canvasOffset + 3] = 255;
-          switch (pixelSize) {
-            case 1: {
-              data[canvasOffset] = byte1;
-              data[canvasOffset + 1] = byte1;
-              data[canvasOffset + 2] = byte1;
-              break;
-            }
-            case 2: {
-              if (imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */) {
-                data[canvasOffset + 3] = byte2;
-              } else {
-                ua[0] = byte1;
-                ua[1] = byte2;
-                const byteValue = dv.getUint16(0, true);
-                data[canvasOffset] = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
-                data[canvasOffset + 1] = Math.round(((byteValue & 992) >> 5) / 31 * 255);
-                data[canvasOffset + 2] = Math.round((byteValue & 31) / 31 * 255);
-              }
-              break;
-            }
-            case 3: {
-              data[canvasOffset] = byte3;
-              data[canvasOffset + 1] = byte2;
-              data[canvasOffset + 2] = byte1;
-              break;
-            }
-            case 4: {
-              data[canvasOffset] = byte3;
-              data[canvasOffset + 1] = byte2;
-              data[canvasOffset + 2] = byte1;
-              if (hasAlpha) {
-                data[canvasOffset + 3] = byte4;
-              }
-              break;
-            }
-          }
-          if (x === imageWidth - 1) {
-            x = 0;
-            y += 1;
-          } else {
-            x += 1;
-          }
-        }
-      } else {
-        const repetition = packet;
-        for (let i2 = 0; i2 <= repetition; ++i2) {
-          const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-          data[canvasOffset + 3] = 255;
-          switch (pixelSize) {
-            case 1: {
-              data[canvasOffset] = imageDataBytes[readCursor];
-              data[canvasOffset + 1] = imageDataBytes[readCursor];
-              data[canvasOffset + 2] = imageDataBytes[readCursor];
-              readCursor += 1;
-              break;
-            }
-            case 2: {
-              if (imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */) {
-                readCursor += 1;
-                data[canvasOffset + 3] = imageDataBytes[readCursor++];
-              } else {
-                ua[0] = imageDataBytes[readCursor++];
-                ua[1] = imageDataBytes[readCursor++];
-                const byteValue = dv.getUint16(0, true);
-                data[canvasOffset] = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
-                data[canvasOffset + 1] = Math.round(((byteValue & 992) >> 5) / 31 * 255);
-                data[canvasOffset + 2] = Math.round((byteValue & 31) / 31 * 255);
-              }
-              break;
-            }
-            case 3: {
-              data[canvasOffset] = imageDataBytes[readCursor + 2];
-              data[canvasOffset + 1] = imageDataBytes[readCursor + 1];
-              data[canvasOffset + 2] = imageDataBytes[readCursor];
-              readCursor += 3;
-              break;
-            }
-            case 4: {
-              data[canvasOffset] = imageDataBytes[readCursor + 2];
-              data[canvasOffset + 1] = imageDataBytes[readCursor + 1];
-              data[canvasOffset + 2] = imageDataBytes[readCursor];
-              if (hasAlpha) {
-                data[canvasOffset + 3] = imageDataBytes[readCursor + 3];
-              }
-              readCursor += 4;
-              break;
-            }
-          }
-          if (x === imageWidth - 1) {
-            x = 0;
-            y += 1;
-          } else {
-            x += 1;
-          }
-        }
-      }
-    }
-    console.timeEnd("run length encoded loop");
-  }
-  drawColorMapped(imageData) {
-    console.time("color mapped loop");
-    const {
-      imageHeight,
-      imageWidth,
-      pixelSize,
-      topToBottom,
-      colorMapPixelSize,
-      colorMapOrigin,
-      imageIdentificationFieldLength,
-      imageDataFieldOffset
-    } = this.stats;
-    const { data } = imageData;
-    const { imageDataBytes, bytes, dataView } = this;
-    const padding = 18 + imageIdentificationFieldLength + colorMapOrigin;
-    for (let y = 0; y < imageHeight; ++y) {
-      for (let x = 0; x < imageWidth; ++x) {
-        const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-        data[canvasOffset + 3] = 255;
-        const byteOffset = y * imageWidth * pixelSize + x * pixelSize;
-        const colorMapEntryOffset = padding + colorMapPixelSize * (pixelSize === 1 ? imageDataBytes[byteOffset] : dataView.getUint16(imageDataFieldOffset + byteOffset, true));
         switch (colorMapPixelSize) {
           case 1: {
             data[canvasOffset] = bytes[colorMapEntryOffset];
@@ -565,224 +522,172 @@ var TGAImage = class _TGAImage {
             break;
           }
         }
+        canvasOffset += 4;
       }
     }
-    console.timeEnd("color mapped loop");
   }
-  drawRunLengthEncodedColorMapped(imageData) {
-    console.time("run length encoded color mapped loop");
-    const { imageHeight, imageWidth, pixelSize, topToBottom, imageIdentificationFieldLength, colorMapOrigin, imageDataFieldOffset, colorMapPixelSize } = this.stats;
-    const { data } = imageData;
-    const { imageDataBytes, bytes, dataView } = this;
-    const readArrayLength = imageDataBytes.length;
-    const padding = 18 + imageIdentificationFieldLength + colorMapOrigin;
-    let readCursor = 0;
-    let x = 0;
-    let y = 0;
-    let byte1 = 0;
-    let byte2 = 0;
-    let byte3 = 0;
-    let byte4 = 0;
-    let colorMapEntryOffset = 0;
-    for (let i = 0; i < readArrayLength; ++i) {
-      const packet = imageDataBytes[readCursor++];
-      if (packet >= 128) {
-        if (pixelSize === 1) {
-          colorMapEntryOffset = padding + colorMapPixelSize * imageDataBytes[readCursor++];
-        } else {
-          colorMapEntryOffset = padding + colorMapPixelSize * dataView.getUint16(imageDataFieldOffset + readCursor, true);
-          readCursor += 2;
-        }
-        const repetition = packet - 128;
-        byte1 = bytes[colorMapEntryOffset];
-        if (colorMapPixelSize > 2) {
-          byte2 = bytes[colorMapEntryOffset + 1];
-          byte3 = bytes[colorMapEntryOffset + 2];
-        }
-        if (colorMapPixelSize > 3) {
-          byte4 = bytes[colorMapEntryOffset + 3];
-        }
-        for (let i2 = 0; i2 <= repetition; ++i2) {
-          const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-          data[canvasOffset + 3] = 255;
-          switch (colorMapPixelSize) {
-            case 1: {
-              data[canvasOffset] = byte1;
-              data[canvasOffset + 1] = byte1;
-              data[canvasOffset + 2] = byte1;
-              break;
-            }
-            case 2: {
-              const byteValue = dataView.getUint16(colorMapEntryOffset, true);
-              data[canvasOffset] = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
-              data[canvasOffset + 1] = Math.round(((byteValue & 992) >> 5) / 31 * 255);
-              data[canvasOffset + 2] = Math.round((byteValue & 31) / 31 * 255);
-              break;
-            }
-            case 3: {
-              data[canvasOffset] = byte3;
-              data[canvasOffset + 1] = byte2;
-              data[canvasOffset + 2] = byte1;
-              break;
-            }
-            case 4: {
-              data[canvasOffset] = byte3;
-              data[canvasOffset + 1] = byte2;
-              data[canvasOffset + 2] = byte1;
-              data[canvasOffset + 3] = byte4;
-              break;
-            }
-          }
-          if (x === imageWidth - 1) {
-            x = 0;
-            y += 1;
-          } else {
-            x += 1;
-          }
-        }
-      } else {
-        const repetition = packet;
-        for (let i2 = 0; i2 <= repetition; ++i2) {
-          const canvasOffset = topToBottom ? y * imageWidth * 4 + x * 4 : (imageHeight - y - 1) * imageWidth * 4 + x * 4;
-          if (pixelSize === 1) {
-            colorMapEntryOffset = padding + colorMapPixelSize * imageDataBytes[readCursor++];
-          } else {
-            colorMapEntryOffset = padding + colorMapPixelSize * dataView.getUint16(imageDataFieldOffset + readCursor, true);
-            readCursor += 2;
-          }
-          data[canvasOffset + 3] = 255;
-          switch (colorMapPixelSize) {
-            case 1: {
-              data[canvasOffset] = bytes[colorMapEntryOffset];
-              data[canvasOffset + 1] = bytes[colorMapEntryOffset];
-              data[canvasOffset + 2] = bytes[colorMapEntryOffset];
-              break;
-            }
-            case 2: {
-              const byteValue = dataView.getUint16(colorMapEntryOffset, true);
-              data[canvasOffset] = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
-              data[canvasOffset + 1] = Math.round(((byteValue & 992) >> 5) / 31 * 255);
-              data[canvasOffset + 2] = Math.round((byteValue & 31) / 31 * 255);
-              break;
-            }
-            case 3: {
-              data[canvasOffset] = bytes[colorMapEntryOffset + 2];
-              data[canvasOffset + 1] = bytes[colorMapEntryOffset + 1];
-              data[canvasOffset + 2] = bytes[colorMapEntryOffset];
-              break;
-            }
-            case 4: {
-              data[canvasOffset] = bytes[colorMapEntryOffset + 2];
-              data[canvasOffset + 1] = bytes[colorMapEntryOffset + 1];
-              data[canvasOffset + 2] = bytes[colorMapEntryOffset];
-              data[canvasOffset + 3] = bytes[colorMapEntryOffset + 3];
-              break;
-            }
-          }
-          if (x === imageWidth - 1) {
-            x = 0;
-            y += 1;
-          } else {
-            x += 1;
-          }
-        }
-      }
-    }
-    console.timeEnd("run length encoded color mapped loop");
+}
+
+// src/lib/draw-methods/drawUncompressed.ts
+function drawUncompressed(imageData, tgaFile) {
+  const { imageHeight, imageWidth, pixelSize, attributesType, imageType, imageDataFieldOffset } = tgaFile.fileInfo;
+  const { data } = imageData;
+  const { imageDataBytes, dataView } = tgaFile;
+  let byteOffset = 0;
+  let canvasOffset = 0;
+  let hasAlpha = true;
+  if (attributesType && attributesType !== 3 /* USEFUL_ALPHA_CHANNEL */ && attributesType !== 4 /* PREMULTIPLIED_ALPHA */) {
+    hasAlpha = false;
   }
-  async draw(canvas2) {
-    console.time("draw");
-    const context = canvas2.getContext("2d");
-    if (!context) {
-      alert("Failed to get canvas context");
-      return;
-    }
-    const begin = performance.now();
-    context.clearRect(0, 0, canvas2.width, canvas2.height);
-    canvas2.width = this.stats.imageWidth;
-    canvas2.height = this.stats.imageHeight;
-    context.fillStyle = "rgba(40, 40, 40, 255)";
-    context.fillRect(0, 0, canvas2.width, canvas2.height);
-    const imageData = context.createImageData(this.stats.imageWidth, this.stats.imageHeight);
-    if (this.stats.rleEncoded) {
-      if (this.stats.imageType === 9 /* RUN_LENGTH_ENCODED_COLOR_MAPPED */) {
-        this.drawRunLengthEncodedColorMapped(imageData);
-      } else {
-        this.drawRunLengthEncoded(imageData);
-      }
-    } else {
-      if (this.stats.imageType === 1 /* COLOR_MAPPED */) {
-        this.drawColorMapped(imageData);
-      } else {
-        if (this.stats.pixelSize === 1) {
-          this.drawUncompressedGrayscale(imageData);
-        } else {
-          this.drawUncompressed(imageData);
+  for (let y = 0; y < imageHeight; ++y) {
+    for (let x = 0; x < imageWidth; ++x) {
+      switch (pixelSize) {
+        case 2: {
+          if (imageType === 3 /* GRAY_SCALE */) {
+            data[canvasOffset] = 0;
+            data[canvasOffset + 1] = 0;
+            data[canvasOffset + 2] = 0;
+            data[canvasOffset + 3] = imageDataBytes[byteOffset + 1];
+          } else {
+            const byteValue = dataView.getUint16(imageDataFieldOffset + byteOffset, true);
+            data[canvasOffset] = Math.round(((byteValue & 31744) >> 10) / 31 * 255);
+            data[canvasOffset + 1] = Math.round(((byteValue & 992) >> 5) / 31 * 255);
+            data[canvasOffset + 2] = Math.round((byteValue & 31) / 31 * 255);
+          }
+          break;
+        }
+        case 3: {
+          data[canvasOffset] = imageDataBytes[byteOffset + 2];
+          data[canvasOffset + 1] = imageDataBytes[byteOffset + 1];
+          data[canvasOffset + 2] = imageDataBytes[byteOffset];
+          break;
+        }
+        case 4: {
+          data[canvasOffset] = imageDataBytes[byteOffset + 2];
+          data[canvasOffset + 1] = imageDataBytes[byteOffset + 1];
+          data[canvasOffset + 2] = imageDataBytes[byteOffset];
+          if (hasAlpha) {
+            data[canvasOffset + 3] = imageDataBytes[byteOffset + 3];
+          }
+          break;
         }
       }
+      byteOffset += pixelSize;
+      canvasOffset += 4;
     }
-    const hasTransparency = this.stats.pixelSize === 4 || this.stats.colorMapPixelSize === 4 || this.stats.pixelSize === 2 && (this.stats.imageType === 3 /* GRAY_SCALE */ || this.stats.imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */);
-    if (hasTransparency) {
-      const { GRID_SIZE } = _TGAImage;
-      const { imageWidth, imageHeight } = this.stats;
-      let evenRow = 0;
-      for (let y = 0; y < imageHeight; y += GRID_SIZE) {
-        let evenColumn = 0;
-        for (let x = 0; x < imageWidth; x += GRID_SIZE) {
-          context.fillStyle = evenRow ^ evenColumn ? "rgba(180, 180, 180, 1)" : "rgba(100, 100, 100, 1)";
-          context.fillRect(x, y, GRID_SIZE, GRID_SIZE);
-          evenColumn = evenColumn === 1 ? 0 : 1;
-        }
-        evenRow = evenRow === 1 ? 0 : 1;
-      }
-      const bitmap = await createImageBitmap(imageData, { premultiplyAlpha: "premultiply" });
-      context.drawImage(bitmap, 0, 0);
-      bitmap.close();
-    } else {
-      context.putImageData(imageData, 0, 0);
-    }
-    this.stats.duration = performance.now() - begin;
-    console.info(this.stats.duration);
-    console.timeEnd("draw");
   }
-};
+}
+
+// src/lib/draw-methods/drawUncompressedGrayscale.ts
+function drawUncompressedGrayscale(imageData, tgaFile) {
+  const { imageHeight, imageWidth, pixelSize } = tgaFile.fileInfo;
+  const { data } = imageData;
+  const { imageDataBytes } = tgaFile;
+  let canvasOffset = 0;
+  let byteOffset = 0;
+  for (let y = 0; y < imageHeight; ++y) {
+    for (let x = 0; x < imageWidth; ++x) {
+      switch (pixelSize) {
+        case 1: {
+          data[canvasOffset] = imageDataBytes[byteOffset];
+          data[canvasOffset + 1] = imageDataBytes[byteOffset];
+          data[canvasOffset + 2] = imageDataBytes[byteOffset];
+          break;
+        }
+        case 4: {
+          data[canvasOffset] = imageDataBytes[byteOffset];
+          data[canvasOffset + 1] = imageDataBytes[byteOffset];
+          data[canvasOffset + 2] = imageDataBytes[byteOffset];
+          break;
+        }
+        default: {
+          alert("Unsupported pixel size");
+          return;
+        }
+      }
+      canvasOffset += 4;
+      byteOffset += 1;
+    }
+  }
+}
 
 // src/index.ts
-new EventSource("/esbuild").addEventListener("change", () => location.reload());
-var fileInput = document.querySelector("input[type=file]");
-var canvas = document.querySelector("canvas");
-var table = document.querySelector("table");
-var template = document.querySelector("#row");
-function populateStatsTable(tga) {
-  table.innerHTML = "";
-  const rows = generateImageInformationTable(tga);
-  for (const [key, value] of Object.entries(rows)) {
-    const clone = template.content.cloneNode(true);
-    const tds = clone.querySelectorAll("td");
-    tds[0].innerText = key;
-    tds[1].innerText = value;
-    table.appendChild(clone);
-  }
-  console.table(rows);
-}
-async function drawToCanvas() {
-  try {
-    const { files } = fileInput;
-    if (!files?.length) {
-      return;
+function drawTransparencyGrid(params) {
+  const { context, imageWidth, imageHeight, gridSize } = params;
+  let evenRow = 0;
+  for (let y = 0; y < imageHeight; y += gridSize) {
+    let evenColumn = 0;
+    for (let x = 0; x < imageWidth; x += gridSize) {
+      context.fillStyle = evenRow ^ evenColumn ? "rgba(180, 180, 180, 1)" : "rgba(100, 100, 100, 1)";
+      context.fillRect(x, y, gridSize, gridSize);
+      evenColumn = evenColumn === 1 ? 0 : 1;
     }
-    const file = files.item(0);
-    if (!file)
-      return;
-    const arrayBuffer = await readFile(file);
-    const tga = new TGAImage(arrayBuffer);
-    tga.draw(canvas).then(() => {
-      populateStatsTable(tga);
-    }).catch(console.trace);
-  } catch (ex) {
-    alert(ex.message);
+    evenRow = evenRow === 1 ? 0 : 1;
   }
 }
-fileInput.addEventListener("change", () => {
-  drawToCanvas();
-});
+function resetCanvas(context, imageWidth, imageHeight) {
+  context.resetTransform();
+  context.clearRect(0, 0, context.canvas.width, context.canvas.height);
+  context.canvas.width = imageWidth;
+  context.canvas.height = imageHeight;
+  context.fillStyle = "rgba(40, 40, 40, 255)";
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+}
+function decodeTGA(tgaFile, context) {
+  const imageData = context.createImageData(tgaFile.fileInfo.imageWidth, tgaFile.fileInfo.imageHeight);
+  imageData.data.fill(255);
+  if (tgaFile.fileInfo.rleEncoded) {
+    if (tgaFile.fileInfo.imageType === 9 /* RUN_LENGTH_ENCODED_COLOR_MAPPED */) {
+      drawRunLengthEncodedColorMapped(imageData, tgaFile);
+    } else {
+      drawRunLengthEncoded(imageData, tgaFile);
+    }
+  } else {
+    if (tgaFile.fileInfo.imageType === 1 /* COLOR_MAPPED */) {
+      drawColorMapped(imageData, tgaFile);
+    } else {
+      if (tgaFile.fileInfo.pixelSize === 1) {
+        drawUncompressedGrayscale(imageData, tgaFile);
+      } else {
+        drawUncompressed(imageData, tgaFile);
+      }
+    }
+  }
+  return imageData;
+}
+function flipCanvasVertically(context) {
+  context.translate(0, context.canvas.height);
+  context.scale(1, -1);
+}
+function drawToCanvas(canvas, arrayBuffer) {
+  const context = canvas.getContext("2d");
+  if (!context) {
+    alert("Failed to get canvas context");
+    return Promise.reject(new Error("Failed to get canvas context"));
+  }
+  const start = performance.now();
+  const tgaFile = new TGAFile(arrayBuffer);
+  resetCanvas(context, tgaFile.fileInfo.imageWidth, tgaFile.fileInfo.imageHeight);
+  const imageData = decodeTGA(tgaFile, context);
+  if (tgaFile.fileInfo.hasTransparency) {
+    const gridSize = Math.floor(Math.min(tgaFile.fileInfo.imageWidth / 5, 30));
+    drawTransparencyGrid({
+      context,
+      gridSize,
+      imageWidth: tgaFile.fileInfo.imageWidth,
+      imageHeight: tgaFile.fileInfo.imageHeight
+    });
+  }
+  return createImageBitmap(imageData, { premultiplyAlpha: tgaFile.fileInfo.hasTransparency ? "premultiply" : "none" }).then((bitmap) => {
+    if (!tgaFile.fileInfo.topToBottom) {
+      flipCanvasVertically(context);
+    }
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const end = performance.now();
+    return { duration: end - start, fileInfo: tgaFile.fileInfo };
+  });
+}
+export {
+  drawToCanvas
+};
