@@ -5,7 +5,7 @@
 - [Dimmer (Firefox Add-on)](https://mehmetb.github.io/dimmer)
 - [Monthly Reminder](https://mehmetb.github.io/monthly-reminder)
 - [Turkish Draughts](https://mehmetb.github.io/turkish-draughts)
-- [Targa from scratch](https://mehmetb.github.io/targa-from-scratch) *([Live Demo](https://mehmetb.github.io/targa-from-scratch-demo))*
+- [TGA for Web](https://mehmetb.github.io/tga-for-web) *([Live Demo](https://mehmetb.github.io/tga-for-web-live-demo))*
 
 ## GPG Key
 
