@@ -3,7 +3,7 @@
 ## Projects
 
 - [Dimmer (Firefox Add-on)](https://mehmetb.github.io/dimmer) <br>
-A browser extension to dim web pages. Add it to Firefox.
+A browser extension to dim web pages.
 - [TGA for Web](https://mehmetb.github.io/tga-for-web) *([Live Demo](https://mehmetb.github.io/tga-for-web-live-demo))* <br>
 A JavaScript library to decode TGA images in the browser.
 - [Galata Dergisi (Galata Magazine)](https://github.com/galata-dergisi/galata-dergisi) *([galatadergisi.org](https://galatadergisi.org))* <br>
