@@ -2,10 +2,14 @@
 
 ## Projects
 
-- [Dimmer (Firefox Add-on)](https://mehmetb.github.io/dimmer)
-- [Monthly Reminder](https://mehmetb.github.io/monthly-reminder)
-- [Turkish Draughts](https://mehmetb.github.io/turkish-draughts)
-- [TGA for Web](https://mehmetb.github.io/tga-for-web) *([Live Demo](https://mehmetb.github.io/tga-for-web-live-demo))*
+- [Dimmer (Firefox Add-on)](https://mehmetb.github.io/dimmer) <br>
+A browser extension to dim web pages. Add it to Firefox.
+- [TGA for Web](https://mehmetb.github.io/tga-for-web) *([Live Demo](https://mehmetb.github.io/tga-for-web-live-demo))* <br>
+A JavaScript library to decode TGA images in the browser.
+- [Galata Dergisi (Galata Magazine)](https://github.com/galata-dergisi/galata-dergisi) *([galatadergisi.org](https://galatadergisi.org))* <br>
+An online Turkish literary magazine.
+- [Monthly Reminder](https://mehmetb.github.io/monthly-reminder) <br>
+Schedule a recurring reminder for a specific day each month. If the selected date falls on a weekend, the reminder (sent via email) will trigger on the next available weekday, or the previous one if preferred.
 
 ## GPG Key
 
