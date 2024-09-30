@@ -423,16 +423,16 @@ function drawRunLengthEncoded(imageData, tgaFile) {
           case 1:
             data[canvasOffset] = byte1;
             data[canvasOffset + 1] = byte1;
-            data[canvasOffset + 1] = byte1;
+            data[canvasOffset + 2] = byte1;
             break;
           case 2:
             if (imageType === 11 /* RUN_LENGTH_ENCODED_GRAY_SCALE */) {
               data[canvasOffset] = 0;
               data[canvasOffset + 1] = 0;
               data[canvasOffset + 2] = 0;
-              data[canvasOffset + 1] = byte1;
+              data[canvasOffset + 3] = byte2;
             } else {
-              data[canvasOffset + 1] = byte1;
+              data[canvasOffset] = byte3;
               data[canvasOffset + 1] = byte2;
               data[canvasOffset + 2] = byte1;
             }
@@ -785,7 +785,9 @@ function drawToCanvas(canvas2, arrayBuffer) {
 }
 
 // src/www-index.ts
-new EventSource("/esbuild").addEventListener("change", () => location.reload());
+if (false) {
+  new EventSource("/esbuild").addEventListener("change", () => location.reload());
+}
 var fileInput = document.querySelector("input[type=file]");
 var canvas = document.querySelector("canvas");
 var table = document.querySelector("table");
