@@ -8,6 +8,8 @@ A browser extension to dim web pages.
 A JavaScript library to decode TGA images in the browser.
 - [Galata Dergisi (Galata Magazine)](https://github.com/galata-dergisi/galata-dergisi) *([galatadergisi.org](https://galatadergisi.org))* <br>
 An online Turkish literary magazine.
+- [vim-navigation](https://mehmetb.github.io/vim-navigation) <br>
+A browser add-on for vim-style scrolling and tab navigation.
 - [Monthly Reminder](https://mehmetb.github.io/monthly-reminder) <br>
 Schedule a recurring reminder for a specific day each month. If the selected date falls on a weekend, the reminder (sent via email) will trigger on the next available weekday, or the previous one if preferred.
 
