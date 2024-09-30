@@ -728,8 +728,7 @@ function resetCanvas(context, imageWidth, imageHeight) {
   context.fillStyle = "rgba(40, 40, 40, 255)";
   context.fillRect(0, 0, context.canvas.width, context.canvas.height);
 }
-function decodeTGA(tgaFile, context) {
-  const imageData = context.createImageData(tgaFile.fileInfo.imageWidth, tgaFile.fileInfo.imageHeight);
+function decodeTGAIntoImageData(tgaFile, imageData) {
   imageData.data.fill(255);
   if (tgaFile.fileInfo.rleEncoded) {
     if (tgaFile.fileInfo.imageType === 9 /* RUN_LENGTH_ENCODED_COLOR_MAPPED */) {
@@ -748,6 +747,10 @@ function decodeTGA(tgaFile, context) {
       }
     }
   }
+}
+function decodeTGA(tgaFile, context) {
+  const imageData = context.createImageData(tgaFile.fileInfo.imageWidth, tgaFile.fileInfo.imageHeight);
+  decodeTGAIntoImageData(tgaFile, imageData);
   return imageData;
 }
 function flipCanvasVertically(context) {
