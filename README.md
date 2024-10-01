@@ -13,7 +13,7 @@ A browser add-on for vim-style scrolling and tab navigation.
 - [Monthly Reminder](https://mehmetb.github.io/monthly-reminder) <br>
 Schedule a recurring reminder for a specific day each month. If the selected date falls on a weekend, the reminder (sent via email) will trigger on the next available weekday, or the previous one if preferred.
 
-## GPG Key
+## PGP Key
 
 [Public key](pubkey.txt)
 
